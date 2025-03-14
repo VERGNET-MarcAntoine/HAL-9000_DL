@@ -6,6 +6,7 @@ from websocket_client import SpaceshipWebSocketClient
 import time
 import pprint
 from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.callbacks import BaseCallback
 
 
 class BoneShip(gym.Env):
@@ -104,7 +105,7 @@ class BoneShip(gym.Env):
 
     def _get_info(self):
         return {
-            "target": self._target_planet
+            "target": self._target_planet,
         }
 
     def reset(self, seed=None, options=None):
@@ -137,9 +138,12 @@ class BoneShip(gym.Env):
 
         info = self._get_info()
 
+        self.score = 0
+        self.max_step = 10000
         return observation, info
 
     def step(self, action):
+        self.max_step -= 1
         command_engine, command_rotation = self._action_to_command(action)
         self.client.send_command(command_engine, command_rotation)
         self.state = self.client.get_state()
@@ -147,23 +151,78 @@ class BoneShip(gym.Env):
         self._ship_data = self._get_ship_data()
         self._planet_data = self._get_planet_data()
 
-        terminated = False
-        truncated = False
-        reward = 1 if terminated else 0
+        distance = np.linalg.norm(
+            self._ship_data[0:3] - self._target_planet[1])
+
+        distance_sun = np.linalg.norm(
+            self._ship_data[0:3] - self._planet_data[0:3])
+
+        if distance > 100:
+            reward = - distance
+        else:
+            reward = 10000
+            planets = self.state.get("planets", [])
+            new_target_planet = planets[np.random.choice(len(planets)-1) + 1]
+
+            while new_target_planet[0] == self._target_planet[0]:
+                new_target_planet = planets[np.random.choice(
+                    len(planets)-1) + 1]
+
+            self._target_planet = new_target_planet
+            self.score += 1
+            print(self._target_planet)
+            print(self.score)
+
+        if self.max_step == 0:
+            print("terminated")
+            print(distance)
+            terminated = True
+        else:
+            terminated = False
+
+        if distance_sun < 100:
+            print("SUN BURN")
+            print(distance_sun)
+            reward = -1000000
+            terminated = True
 
         observation = self._get_obs()
         info = self._get_info()
-
+        truncated = False
         return observation, reward, terminated, truncated, info
 
     def close(self):
-        ...
+        if self.client:
+            if self.client.connected:
+                self.client.disconnect()
 
 
 if __name__ == "__main__":
 
     env = BoneShip()
-    model = A2C("MultiInputPolicy", env, verbose=1).learn(
-        10000)    # env.reset()
-    # It will check your custom environment and output additional warnings if needed
     # check_env(env)
+
+    model = A2C("MultiInputPolicy", env, verbose=1)
+
+    # Entraîner le modèle avec le callback
+    model.learn(total_timesteps=10000000)
+
+    env.close()
+
+    # ce qui ce passe dans learn de maniere non optimiser
+    """
+    total_timesteps = 100000
+    obs, info = env.reset()  # récupération des informations de reset
+    print(f"reset info: {info}")
+
+    for timestep in range(total_timesteps):
+        action, _states = model.predict(obs, deterministic=True)
+        new_obs, reward, done, truncated, info = env.step(
+            action)  # récupération des information de step
+        # afficher les informations de reset et step.
+        print(f"step info: {info}")
+        if done or truncated:
+            obs, info = env.reset()  # récupération des informations de reset
+        else:
+            obs = new_obs
+    """
