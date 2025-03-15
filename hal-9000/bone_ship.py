@@ -46,6 +46,9 @@ class BoneShip(gym.Env):
                 "ship": gym.spaces.Box(
                     low=-np.inf, high=np.inf, shape=(9,), dtype=np.float64
                 ),
+                "target": gym.spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64
+                ),
                 "planets": gym.spaces.Box(
                     low=-np.inf, high=np.inf, shape=(obs_planets_size,), dtype=np.float64
                 )
@@ -101,13 +104,40 @@ class BoneShip(gym.Env):
         return np.array(combined_data)
 
     def _get_obs(self):
-        return {"ship": self._ship_data, "planets": self._planet_data}
+        return {
+            "ship": self._ship_data, 
+            "target": np.array(self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3], dtype=np.float64), 
+            "planets": self._planet_data
+        }
 
     def _get_info(self):
         return {
-            "target": self._target_planet,
+            "target": self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3],
+            "current_target/score": self._current_target,
+            "step": self._num_step,
+            "global_reward": self._global_reward
         }
-
+    
+    def _custom_print_info(self, info):
+        print("-" * 40)
+        print("    Environment Information    ")
+        print("-" * 40)
+        print(f"  Target Position: {info['target']}")
+        print(f"  Current Target/Score: {info['current_target/score']}")
+        print(f"  Step: {info['step']}")
+        print(f"  Global Reward: {info['global_reward']:.2f}") # format to 2 decimal places
+        print("-" * 40)
+    
+    def _get_norme(self):
+        return np.linalg.norm(self._planet_data[0:3] - self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3])
+    
+    
+    def _get_distance_target(self):
+        return np.linalg.norm(self._ship_data[0:3] - self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3])
+    
+    def _get_sun_distance(self):
+        return np.linalg.norm(self._ship_data[0:3] - self._planet_data[0:3])
+    
     def reset(self, seed=None, options=None):
         """
         Réinitialise l'environnement au début d'un nouvel épisode.
@@ -129,66 +159,85 @@ class BoneShip(gym.Env):
 
         self._ship_data = self._get_ship_data()
         self._planet_data = self._get_planet_data()
+        
+        self._target_ids = np.random.choice(np.arange(1, self.nb_planets), size=self.nb_planets - 1, replace=False)
+        self._current_target = 0
+        self._norme = self._get_norme()
 
+        
         observation = self._get_obs()
 
-        # QUOI METTRE DANS INFO pour l'instant la target peut etre autre chose plus tard
-        planets = self.state.get("planets", [])
-        self._target_planet = planets[np.random.choice(len(planets)-1) + 1]
-
+        self._num_step = 0
+        self._max_step = 10000
+        self._global_reward = 0
         info = self._get_info()
 
-        self.score = 0
-        self.max_step = 10000
         return observation, info
+    
 
     def step(self, action):
-        self.max_step -= 1
+        # Increase the number of step  
+        self._num_step += 1
+
+        distance_target = self._get_distance_target()
+
+
+        # Send the command to the serveur
         command_engine, command_rotation = self._action_to_command(action)
         self.client.send_command(command_engine, command_rotation)
-        self.state = self.client.get_state()
+        
+        # time.sleep(0.001) We can add sleep here
 
+        # Get the new state after sending the command
+        self.state = self.client.get_state()
         self._ship_data = self._get_ship_data()
         self._planet_data = self._get_planet_data()
 
-        distance = np.linalg.norm(
-            self._ship_data[0:3] - self._target_planet[1])
+        new_distance_target = self._get_distance_target()
 
-        distance_sun = np.linalg.norm(
-            self._ship_data[0:3] - self._planet_data[0:3])
+        distance_sun = self._get_sun_distance()
 
-        if distance > 100:
-            reward = - distance
-        else:
-            reward = 10000
-            planets = self.state.get("planets", [])
-            new_target_planet = planets[np.random.choice(len(planets)-1) + 1]
 
-            while new_target_planet[0] == self._target_planet[0]:
-                new_target_planet = planets[np.random.choice(
-                    len(planets)-1) + 1]
+        reward = (distance_target - new_distance_target)/self._norme
 
-            self._target_planet = new_target_planet
-            self.score += 1
-            print(self._target_planet)
-            print(self.score)
+        terminated = False
+        truncated = False
 
-        if self.max_step == 0:
+
+        if self._num_step > self._max_step:
             print("terminated")
-            print(distance)
-            terminated = True
-        else:
-            terminated = False
+            print(f"Distance with target: {new_distance_target}")
+            truncated = True
 
-        if distance_sun < 100:
-            print("SUN BURN")
+        
+        elif  distance_sun < 100:
+            print("SUNBURN")
             print(distance_sun)
-            reward = -1000000
+            reward = -10
             terminated = True
+
+        elif new_distance_target < 100:
+            reward = 100
+            self._current_target += 1
+
+            self._norme = self._get_norme()
+
+            # For the log
+            planets = self.state.get("planets", [])
+            print(f"new target: {planets[self._target_ids[self._current_target]]}")
+            print(f"number of step: {self._num_step}")
+            print(f"Current score {self.score}")
+        
+
+
+        self._global_reward += reward
 
         observation = self._get_obs()
         info = self._get_info()
-        truncated = False
+        
+        if self._num_step % 1000 == 0 or terminated or truncated:
+            self._custom_print_info(info)
+
         return observation, reward, terminated, truncated, info
 
     def close(self):
@@ -200,17 +249,18 @@ class BoneShip(gym.Env):
 if __name__ == "__main__":
 
     env = BoneShip()
+    
     # check_env(env)
 
     model = A2C("MultiInputPolicy", env, verbose=1)
 
     # Entraîner le modèle avec le callback
-    model.learn(total_timesteps=10000000)
+    model.learn(total_timesteps=1000000)
 
     env.close()
-
-    # ce qui ce passe dans learn de maniere non optimiser
     """
+    # ce qui ce passe dans learn de maniere non optimiser
+
     total_timesteps = 100000
     obs, info = env.reset()  # récupération des informations de reset
     print(f"reset info: {info}")
