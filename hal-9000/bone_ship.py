@@ -212,7 +212,15 @@ class BoneShip(gym.Env):
         
         elif  distance_sun < 100:
             print("SUNBURN")
-            print(distance_sun)
+            print(f"distance with the sun: {distance_sun}")
+            print(f"distance with target: {new_distance_target}")
+            reward = -10
+            terminated = True
+
+        elif  distance_sun > 10000:
+            print("BYEBYE")
+            print(f"distance with the sun: {distance_sun}")
+            print(f"distance with target: {new_distance_target}")
             reward = -10
             terminated = True
 
@@ -226,7 +234,7 @@ class BoneShip(gym.Env):
             planets = self.state.get("planets", [])
             print(f"new target: {planets[self._target_ids[self._current_target]]}")
             print(f"number of step: {self._num_step}")
-            print(f"Current score {self.score}")
+            print(f"Current score {self._current_target}")
         
 
 
@@ -237,6 +245,7 @@ class BoneShip(gym.Env):
         
         if self._num_step % 1000 == 0 or terminated or truncated:
             self._custom_print_info(info)
+            print(np.linalg.norm(self._planet_data[0:3] - self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3]))
 
         return observation, reward, terminated, truncated, info
 
