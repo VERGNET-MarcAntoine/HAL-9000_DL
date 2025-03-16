@@ -4,7 +4,6 @@ import numpy as np
 from gymnasium import spaces
 from websocket_client import SpaceshipWebSocketClient
 import time
-import pprint
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.callbacks import BaseCallback
 
@@ -27,7 +26,6 @@ class BoneShip(gym.Env):
         self.client = None
         # Récuperer nb_planets automatiquement en regardant etat système -1 car le soleil est considerer comme une planete
         self.nb_planets = len(init_state["planets"])
-
         # initialisation des variable
         # Initialize with zeros, size 9
         self._ship_data = np.zeros(9, dtype=np.float64)
@@ -36,8 +34,8 @@ class BoneShip(gym.Env):
 
         # Espace d'action: 10 valeurs binaires (6 moteurs de translation + 4 moteurs de rotation)
         # [front, back, left, right, up, down, rot_left, rot_right, rot_up, rot_down]
-        self.action_space = spaces.MultiBinary(10)
-
+        # self.action_space = spaces.MultiBinary(10)
+        self.action_space = spaces.MultiBinary(6)
         # Espace d'observation:
         # Planet speeds (x, y, z) et positions (x, y, z)
         obs_planets_size = self.nb_planets * 6
@@ -75,11 +73,12 @@ class BoneShip(gym.Env):
             "down": bool(action[5])
         }
         rotation = {
-            "left": bool(action[6]),
-            "right": bool(action[7]),
-            "up": bool(action[8]),
-            "down": bool(action[9])
+            "left": False, #bool(action[6]),
+            "right": False, #bool(action[7]),
+            "up": False, #bool(action[8]),
+            "down": False, #bool(action[9])
         }
+        
         return engines, rotation
 
     def _get_planet_data(self):
@@ -168,7 +167,7 @@ class BoneShip(gym.Env):
         observation = self._get_obs()
 
         self._num_step = 0
-        self._max_step = 10000
+        self._max_step = 3600*10*20
         self._global_reward = 0
         info = self._get_info()
 
@@ -186,7 +185,7 @@ class BoneShip(gym.Env):
         command_engine, command_rotation = self._action_to_command(action)
         self.client.send_command(command_engine, command_rotation)
         
-        # time.sleep(0.001) We can add sleep here
+        time.sleep(0.005) # We can add sleep here
 
         # Get the new state after sending the command
         self.state = self.client.get_state()
@@ -214,14 +213,14 @@ class BoneShip(gym.Env):
             print("SUNBURN")
             print(f"distance with the sun: {distance_sun}")
             print(f"distance with target: {new_distance_target}")
-            reward = -10
+            reward = -self._max_step/self._num_step
             terminated = True
 
         elif  distance_sun > 10000:
             print("BYEBYE")
             print(f"distance with the sun: {distance_sun}")
             print(f"distance with target: {new_distance_target}")
-            reward = -10
+            reward = -self._max_step/self._num_step
             terminated = True
 
         elif new_distance_target < 100:
@@ -243,9 +242,10 @@ class BoneShip(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
         
-        if self._num_step % 1000 == 0 or terminated or truncated:
+        if self._num_step % (100*60) == 0 or terminated or truncated:
             self._custom_print_info(info)
-            print(np.linalg.norm(self._planet_data[0:3] - self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3]))
+            print(f"target id: {self._target_ids[self._current_target]}")
+            print(f"Distance with target: {new_distance_target}")
 
         return observation, reward, terminated, truncated, info
 
@@ -259,12 +259,12 @@ if __name__ == "__main__":
 
     env = BoneShip()
     
-    # check_env(env)
+    check_env(env)
 
     model = A2C("MultiInputPolicy", env, verbose=1)
 
     # Entraîner le modèle avec le callback
-    model.learn(total_timesteps=1000000)
+    model.learn(total_timesteps=36000000)
 
     env.close()
     """
