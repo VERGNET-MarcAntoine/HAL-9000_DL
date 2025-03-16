@@ -1,3 +1,7 @@
 .venv
 outer-wilds-front/
 rust-server/
+
+# Cache files
+__pycache__/
+*.pyc
