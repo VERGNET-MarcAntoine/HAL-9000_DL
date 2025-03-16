@@ -35,7 +35,7 @@ class BoneShip(gym.Env):
         # Espace d'action: 10 valeurs binaires (6 moteurs de translation + 4 moteurs de rotation)
         # [front, back, left, right, up, down, rot_left, rot_right, rot_up, rot_down]
         # self.action_space = spaces.MultiBinary(10)
-        self.action_space = spaces.MultiBinary(6)
+        self.action_space = spaces.MultiBinary(4)
         # Espace d'observation:
         # Planet speeds (x, y, z) et positions (x, y, z)
         obs_planets_size = self.nb_planets * 6
@@ -65,20 +65,20 @@ class BoneShip(gym.Env):
         Converts a MultiBinary action (numpy array) to separate engine and rotation dictionaries.
         """
         engines = {
-            "front": bool(action[0]),
-            "back": bool(action[1]),
-            "left": bool(action[2]),
-            "right": bool(action[3]),
-            "up": bool(action[4]),
-            "down": bool(action[5])
+            "front": False,  # bool(action[0]),
+            "back": False,  # bool(action[1]),
+            "left": bool(action[0]),
+            "right": bool(action[1]),
+            "up": bool(action[2]),
+            "down": bool(action[3])
         }
         rotation = {
-            "left": False, #bool(action[6]),
-            "right": False, #bool(action[7]),
-            "up": False, #bool(action[8]),
-            "down": False, #bool(action[9])
+            "left": False,  # bool(action[6]),
+            "right": False,  # bool(action[7]),
+            "up": False,  # bool(action[8]),
+            "down": False,  # bool(action[9])
         }
-        
+
         return engines, rotation
 
     def _get_planet_data(self):
@@ -104,8 +104,8 @@ class BoneShip(gym.Env):
 
     def _get_obs(self):
         return {
-            "ship": self._ship_data, 
-            "target": np.array(self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3], dtype=np.float64), 
+            "ship": self._ship_data,
+            "target": np.array(self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3], dtype=np.float64),
             "planets": self._planet_data
         }
 
@@ -116,7 +116,7 @@ class BoneShip(gym.Env):
             "step": self._num_step,
             "global_reward": self._global_reward
         }
-    
+
     def _custom_print_info(self, info):
         print("-" * 40)
         print("    Environment Information    ")
@@ -124,19 +124,19 @@ class BoneShip(gym.Env):
         print(f"  Target Position: {info['target']}")
         print(f"  Current Target/Score: {info['current_target/score']}")
         print(f"  Step: {info['step']}")
-        print(f"  Global Reward: {info['global_reward']:.2f}") # format to 2 decimal places
+        # format to 2 decimal places
+        print(f"  Global Reward: {info['global_reward']:.2f}")
         print("-" * 40)
-    
+
     def _get_norme(self):
         return np.linalg.norm(self._planet_data[0:3] - self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3])
-    
-    
+
     def _get_distance_target(self):
         return np.linalg.norm(self._ship_data[0:3] - self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3])
-    
+
     def _get_sun_distance(self):
         return np.linalg.norm(self._ship_data[0:3] - self._planet_data[0:3])
-    
+
     def reset(self, seed=None, options=None):
         """
         Réinitialise l'environnement au début d'un nouvel épisode.
@@ -158,12 +158,12 @@ class BoneShip(gym.Env):
 
         self._ship_data = self._get_ship_data()
         self._planet_data = self._get_planet_data()
-        
-        self._target_ids = np.random.choice(np.arange(1, self.nb_planets), size=self.nb_planets - 1, replace=False)
+
+        self._target_ids = np.random.choice(
+            np.arange(1, self.nb_planets), size=self.nb_planets - 1, replace=False)
         self._current_target = 0
         self._norme = self._get_norme()
 
-        
         observation = self._get_obs()
 
         self._num_step = 0
@@ -172,20 +172,18 @@ class BoneShip(gym.Env):
         info = self._get_info()
 
         return observation, info
-    
 
     def step(self, action):
-        # Increase the number of step  
+        # Increase the number of step
         self._num_step += 1
 
         distance_target = self._get_distance_target()
 
-
         # Send the command to the serveur
         command_engine, command_rotation = self._action_to_command(action)
         self.client.send_command(command_engine, command_rotation)
-        
-        time.sleep(0.005) # We can add sleep here
+
+        time.sleep(0.005)  # We can add sleep here
 
         # Get the new state after sending the command
         self.state = self.client.get_state()
@@ -196,27 +194,24 @@ class BoneShip(gym.Env):
 
         distance_sun = self._get_sun_distance()
 
-
         reward = (distance_target - new_distance_target)/self._norme
 
         terminated = False
         truncated = False
-
 
         if self._num_step > self._max_step:
             print("terminated")
             print(f"Distance with target: {new_distance_target}")
             truncated = True
 
-        
-        elif  distance_sun < 100:
+        elif distance_sun < 100:
             print("SUNBURN")
             print(f"distance with the sun: {distance_sun}")
             print(f"distance with target: {new_distance_target}")
             reward = -self._max_step/self._num_step
             terminated = True
 
-        elif  distance_sun > 10000:
+        elif distance_sun > 10000:
             print("BYEBYE")
             print(f"distance with the sun: {distance_sun}")
             print(f"distance with target: {new_distance_target}")
@@ -231,17 +226,16 @@ class BoneShip(gym.Env):
 
             # For the log
             planets = self.state.get("planets", [])
-            print(f"new target: {planets[self._target_ids[self._current_target]]}")
+            print(
+                f"new target: {planets[self._target_ids[self._current_target]]}")
             print(f"number of step: {self._num_step}")
             print(f"Current score {self._current_target}")
-        
-
 
         self._global_reward += reward
 
         observation = self._get_obs()
         info = self._get_info()
-        
+
         if self._num_step % (100*60) == 0 or terminated or truncated:
             self._custom_print_info(info)
             print(f"target id: {self._target_ids[self._current_target]}")
@@ -258,10 +252,10 @@ class BoneShip(gym.Env):
 if __name__ == "__main__":
 
     env = BoneShip()
-    
+
     check_env(env)
 
-    model = A2C("MultiInputPolicy", env, verbose=1)
+    model = A2C("MultiInputPolicy", env, verbose=0)
 
     # Entraîner le modèle avec le callback
     model.learn(total_timesteps=36000000)
