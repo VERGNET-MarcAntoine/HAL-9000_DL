@@ -9,9 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sleep_time = float(os.getenv("SLEEP_TIME"))
-number_episode = int(os.getenv("NUMBER_EPISODE"))
 episode_time = int(os.getenv("EPISODE_TIME"))
-save_number = int(os.getenv("SAVE_NUMBER"))
 
 
 class BoneShip(gym.Env):
@@ -174,6 +172,7 @@ class BoneShip(gym.Env):
 
         command_engine, command_rotation = self._action_to_command(action)
         self.client.send_command(command_engine, command_rotation)
+
         time.sleep(sleep_time)  # the sleep between 2 frame
 
        # Get the new state after sending the command

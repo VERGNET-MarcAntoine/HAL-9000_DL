@@ -10,7 +10,7 @@ load_dotenv()
 number_episode = int(os.getenv("NUMBER_EPISODE"))
 episode_time = int(os.getenv("EPISODE_TIME"))
 save_number = int(os.getenv("SAVE_NUMBER"))
-TIMESTEPS = (number_episode*episode_time)//save_number
+TIMESTEPS = (number_episode*episode_time*60*4)//save_number
 
 
 logdir = "logs"
