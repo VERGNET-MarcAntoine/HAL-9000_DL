@@ -51,6 +51,7 @@ def update(frame):
     else:
         sun_scatter.set_offsets(np.empty((0, 2)))
 
+    time.sleep(1/60)
     return ships_scatter, planets_scatter
 
 

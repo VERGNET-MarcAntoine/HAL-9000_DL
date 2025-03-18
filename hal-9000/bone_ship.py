@@ -1,12 +1,17 @@
-from stable_baselines3 import A2C, PPO
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 from websocket_client import SpaceshipWebSocketClient
 import time
-from stable_baselines3.common.env_checker import check_env
-from stable_baselines3.common.callbacks import BaseCallback
-import pprint
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+sleep_time = float(os.getenv("SLEEP_TIME"))
+number_episode = int(os.getenv("NUMBER_EPISODE"))
+episode_time = int(os.getenv("EPISODE_TIME"))
+save_number = int(os.getenv("SAVE_NUMBER"))
 
 
 class BoneShip(gym.Env):
@@ -27,13 +32,14 @@ class BoneShip(gym.Env):
         self.client = None
         # Récuperer nb_planets automatiquement en regardant etat système -1 car le soleil est considerer comme une planete
         self.nb_planets = len(init_state["planets"])
+
+        self._max_step = episode_time*60*4
+
         # initialisation des variable
         # Initialize with zeros, size 9
         self._ship_data = np.zeros(9, dtype=np.float64)
         # Initialize with zeros, size nb_planets * 6
         self._planets_data = np.zeros(self.nb_planets * 6, dtype=np.float64)
-        self._max_step = 60*10*4
-
         # Espace d'action: 10 valeurs binaires (6 moteurs de translation + 4 moteurs de rotation)
         # [front, back, left, right, up, down, rot_left, rot_right, rot_up, rot_down]
         # self.action_space = spaces.MultiBinary(10)
@@ -54,13 +60,6 @@ class BoneShip(gym.Env):
                 )
             }
         )
-        # Variables d'état
-        # self.episode_steps = 0
-        # self.max_episode_steps = 1000
-
-        # Objectifs de mission
-        # self.target_planet = None
-        # self.target_altitude = 1  # en unités de distance
 
     def _action_to_command(self, action):
         """
@@ -159,7 +158,6 @@ class BoneShip(gym.Env):
         observation = self._get_obs()
 
         self._num_step = 0
-        self._max_step = 60*10*4
         self._global_reward = 0
         info = self._get_info()
 
@@ -168,47 +166,24 @@ class BoneShip(gym.Env):
 
     def step(self, action):
         # Increase the number of step
+        terminated = False
+        truncated = False
         self._num_step += 1
 
-        distance_target = self._get_distance_target()
         distance_sun = self._get_sun_distance()
 
-        # Send the command to the serveur
         command_engine, command_rotation = self._action_to_command(action)
         self.client.send_command(command_engine, command_rotation)
-
         time.sleep(0.005)  # the sleep between 2 frame
 
-        command_engine = {
-            "front": False,  # bool(action[0]),
-            "back": False,  # bool(action[1]),
-            "left": False,
-            "right": False,
-            "up": False,
-            "down": False
-        }
-        command_rotation = {
-            "left": False,  # bool(action[6]),
-            "right": False,  # bool(action[7]),
-            "up": False,  # bool(action[8]),
-            "down": False,  # bool(action[9])
-        }
-
-        self.client.send_command(command_engine, command_rotation)
-
-        # Get the new state after sending the command
+       # Get the new state after sending the command
         self.state = self.client.get_state()
         self._ship_data = self._get_ship_data()
         self._planet_data = self._get_planet_data()
 
-        new_distance_target = self._get_distance_target()
-
         new_distance_sun = self._get_sun_distance()
 
-        reward = (distance_sun - new_distance_sun)/new_distance_sun
-
-        terminated = False
-        truncated = False
+        reward = (distance_sun - new_distance_sun)
 
         if self._num_step > self._max_step:
             truncated = True
@@ -218,7 +193,6 @@ class BoneShip(gym.Env):
 
         elif distance_sun < 2000:
             reward = 1
-            self.score += 1
 
         elif distance_sun > 20000:
             reward = -1
@@ -234,26 +208,3 @@ class BoneShip(gym.Env):
         if self.client:
             if self.client.connected:
                 self.client.disconnect()
-
-
-if __name__ == "__main__":
-
-    logdir = "logs"
-    models_dir = "models"
-
-    env = BoneShip()
-
-    model = PPO("MultiInputPolicy", env, verbose=1,
-                tensorboard_log=logdir, device="cpu")
-
-    max_episode = env._max_step * 150
-
-    # Entraîner le modèle avec le callback
-    TIMESTEPS = max_episode / 10
-
-    for i in range(10):
-        model.learn(total_timesteps=TIMESTEPS,
-                    reset_num_timesteps=False, tb_log_name="PPO")
-        model.save(f"{models_dir}/{TIMESTEPS*i}")
-
-    env.close()
