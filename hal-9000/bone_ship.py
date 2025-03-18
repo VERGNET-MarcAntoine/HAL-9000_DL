@@ -1,4 +1,4 @@
-from stable_baselines3 import A2C
+from stable_baselines3 import A2C, PPO
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
@@ -6,6 +6,7 @@ from websocket_client import SpaceshipWebSocketClient
 import time
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.callbacks import BaseCallback
+import pprint
 
 
 class BoneShip(gym.Env):
@@ -117,17 +118,6 @@ class BoneShip(gym.Env):
             "global_reward": self._global_reward
         }
 
-    def _custom_print_info(self, info):
-        print("-" * 40)
-        print("    Environment Information    ")
-        print("-" * 40)
-        print(f"  Target Position: {info['target']}")
-        print(f"  Current Target/Score: {info['current_target/score']}")
-        print(f"  Step: {info['step']}")
-        # format to 2 decimal places
-        print(f"  Global Reward: {info['global_reward']:.2f}")
-        print("-" * 40)
-
     def _get_norme(self):
         return np.linalg.norm(self._planet_data[0:3] - self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3])
 
@@ -152,6 +142,7 @@ class BoneShip(gym.Env):
 
         self.client = SpaceshipWebSocketClient(self.ws)
         self.client.connect()
+        # waiting the initialisation of the client
         time.sleep(0.1)
 
         self.state = self.client.get_state()
@@ -167,10 +158,11 @@ class BoneShip(gym.Env):
         observation = self._get_obs()
 
         self._num_step = 0
-        self._max_step = 3600*10*20
+        self._max_step = 60*10*4
         self._global_reward = 0
         info = self._get_info()
 
+        self.score = 0
         return observation, info
 
     def step(self, action):
@@ -178,12 +170,30 @@ class BoneShip(gym.Env):
         self._num_step += 1
 
         distance_target = self._get_distance_target()
+        distance_sun = self._get_sun_distance()
 
         # Send the command to the serveur
         command_engine, command_rotation = self._action_to_command(action)
         self.client.send_command(command_engine, command_rotation)
 
-        time.sleep(0.005)  # We can add sleep here
+        time.sleep(0.005)  # the sleep between 2 frame
+
+        command_engine = {
+            "front": False,  # bool(action[0]),
+            "back": False,  # bool(action[1]),
+            "left": False,
+            "right": False,
+            "up": False,
+            "down": False
+        }
+        command_rotation = {
+            "left": False,  # bool(action[6]),
+            "right": False,  # bool(action[7]),
+            "up": False,  # bool(action[8]),
+            "down": False,  # bool(action[9])
+        }
+
+        self.client.send_command(command_engine, command_rotation)
 
         # Get the new state after sending the command
         self.state = self.client.get_state()
@@ -192,54 +202,30 @@ class BoneShip(gym.Env):
 
         new_distance_target = self._get_distance_target()
 
-        distance_sun = self._get_sun_distance()
+        new_distance_sun = self._get_sun_distance()
 
-        reward = (distance_target - new_distance_target)/self._norme
+        reward = (distance_sun - new_distance_sun)/new_distance_sun
 
         terminated = False
         truncated = False
 
         if self._num_step > self._max_step:
-            print("terminated")
-            print(f"Distance with target: {new_distance_target}")
             truncated = True
 
-        elif distance_sun < 100:
-            print("SUNBURN")
-            print(f"distance with the sun: {distance_sun}")
-            print(f"distance with target: {new_distance_target}")
-            reward = -self._max_step/self._num_step
-            terminated = True
+        elif distance_sun < 500:
+            reward = -1
 
-        elif distance_sun > 10000:
-            print("BYEBYE")
-            print(f"distance with the sun: {distance_sun}")
-            print(f"distance with target: {new_distance_target}")
-            reward = -self._max_step/self._num_step
-            terminated = True
+        elif distance_sun < 2000:
+            reward = 1
+            self.score += 1
 
-        elif new_distance_target < 100:
-            reward = 100
-            self._current_target += 1
-
-            self._norme = self._get_norme()
-
-            # For the log
-            planets = self.state.get("planets", [])
-            print(
-                f"new target: {planets[self._target_ids[self._current_target]]}")
-            print(f"number of step: {self._num_step}")
-            print(f"Current score {self._current_target}")
+        elif distance_sun > 20000:
+            reward = -1
 
         self._global_reward += reward
 
         observation = self._get_obs()
         info = self._get_info()
-
-        if self._num_step % (100*60) == 0 or terminated or truncated:
-            self._custom_print_info(info)
-            print(f"target id: {self._target_ids[self._current_target]}")
-            print(f"Distance with target: {new_distance_target}")
 
         return observation, reward, terminated, truncated, info
 
@@ -251,31 +237,22 @@ class BoneShip(gym.Env):
 
 if __name__ == "__main__":
 
+    logdir = "logs"
+    models_dir = "models"
+
     env = BoneShip()
 
-    check_env(env)
+    model = PPO("MultiInputPolicy", env, verbose=1,
+                tensorboard_log=logdir, device="cpu")
 
-    model = A2C("MultiInputPolicy", env, verbose=0)
+    max_episode = env._max_step * 150
 
     # Entraîner le modèle avec le callback
-    model.learn(total_timesteps=36000000)
+    TIMESTEPS = max_episode / 10
+
+    for i in range(10):
+        model.learn(total_timesteps=TIMESTEPS,
+                    reset_num_timesteps=False, tb_log_name="PPO")
+        model.save(f"{models_dir}/{TIMESTEPS*i}")
 
     env.close()
-    """
-    # ce qui ce passe dans learn de maniere non optimiser
-
-    total_timesteps = 100000
-    obs, info = env.reset()  # récupération des informations de reset
-    print(f"reset info: {info}")
-
-    for timestep in range(total_timesteps):
-        action, _states = model.predict(obs, deterministic=True)
-        new_obs, reward, done, truncated, info = env.step(
-            action)  # récupération des information de step
-        # afficher les informations de reset et step.
-        print(f"step info: {info}")
-        if done or truncated:
-            obs, info = env.reset()  # récupération des informations de reset
-        else:
-            obs = new_obs
-    """

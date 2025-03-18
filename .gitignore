@@ -2,6 +2,8 @@
 outer-wilds-front/
 rust-server/
 
+logs/
+models/
 # Cache files
 __pycache__/
 *.pyc
