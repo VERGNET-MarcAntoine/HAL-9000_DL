@@ -32,6 +32,7 @@ class BoneShip(gym.Env):
         self._ship_data = np.zeros(9, dtype=np.float64)
         # Initialize with zeros, size nb_planets * 6
         self._planets_data = np.zeros(self.nb_planets * 6, dtype=np.float64)
+        self._max_step = 60*10*4
 
         # Espace d'action: 10 valeurs binaires (6 moteurs de translation + 4 moteurs de rotation)
         # [front, back, left, right, up, down, rot_left, rot_right, rot_up, rot_down]
