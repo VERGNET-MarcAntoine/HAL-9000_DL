@@ -1,6 +1,7 @@
 .venv
 outer-wilds-front/
 rust-server/
+.env
 
 logs/
 models/

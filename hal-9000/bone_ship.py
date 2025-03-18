@@ -174,7 +174,7 @@ class BoneShip(gym.Env):
 
         command_engine, command_rotation = self._action_to_command(action)
         self.client.send_command(command_engine, command_rotation)
-        time.sleep(0.005)  # the sleep between 2 frame
+        time.sleep(sleep_time)  # the sleep between 2 frame
 
        # Get the new state after sending the command
         self.state = self.client.get_state()
@@ -183,7 +183,7 @@ class BoneShip(gym.Env):
 
         new_distance_sun = self._get_sun_distance()
 
-        reward = (distance_sun - new_distance_sun)
+        reward = (distance_sun - new_distance_sun)/1000
 
         if self._num_step > self._max_step:
             truncated = True
