@@ -182,19 +182,19 @@ class BoneShip(gym.Env):
 
         new_distance_sun = self._get_sun_distance()
 
-        reward = (distance_sun - new_distance_sun)/1000
+        reward = - new_distance_sun / 20000
 
         if self._num_step > self._max_step:
             truncated = True
 
-        elif distance_sun < 500:
-            reward = -1
+        elif new_distance_sun < 500:
+            reward += -1
 
-        elif distance_sun < 2000:
-            reward = 1
+        elif new_distance_sun < 2000:
+            reward += 1
 
-        elif distance_sun > 20000:
-            reward = -1
+        elif new_distance_sun > 20000:
+            reward += -1
 
         self._global_reward += reward
 
