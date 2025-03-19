@@ -168,8 +168,6 @@ class BoneShip(gym.Env):
         truncated = False
         self._num_step += 1
 
-        distance_sun = self._get_sun_distance()
-
         command_engine, command_rotation = self._action_to_command(action)
         self.client.send_command(command_engine, command_rotation)
 
@@ -182,19 +180,20 @@ class BoneShip(gym.Env):
 
         new_distance_sun = self._get_sun_distance()
 
-        reward = - new_distance_sun / 20000
+        distance_target = self._get_distance_target()
+
+        reward = - distance_target / 20000
 
         if self._num_step > self._max_step:
             truncated = True
 
-        elif new_distance_sun < 500:
-            reward += -1
+        elif new_distance_sun < 200:
+            reward = -1
 
-        elif new_distance_sun < 2000:
-            reward += 1
-
-        elif new_distance_sun > 20000:
-            reward += -1
+        elif distance_target < 200:
+            reward = 100
+            self._current_target += 1
+            print(f"Score : {self._current_target}")
 
         self._global_reward += reward
 
