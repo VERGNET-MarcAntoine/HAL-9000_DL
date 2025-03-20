@@ -185,44 +185,54 @@ class Ship(gym.Env):
         # Récupération des distances actuelles
         distance_target = self._get_distance_target()
         distance_sun = self._get_sun_distance()
+
         # Vérification de dépassement de la distance maximale
-        if distance_sun > 6000 or distance_sun < 200:
-            # Reward très négative et signal pour arrêter l'épisode
-            return -1000, True
+        if distance_sun > 10000 or distance_sun < 150:
+            return -1000, True  # Fin de l'épisode avec pénalité sévère
 
         # Récompense principale : réduction de la distance cible
         delta_distance = previous_distance_target - distance_target
-        reward = - distance_target / 20000  # Récompense négative basée sur la distance
+        reward = -distance_target / 20000  # Récompense négative basée sur la distance
 
         if delta_distance > 0:
-            reward += delta_distance / 500  # Récompense pour la réduction de distance
+            reward += delta_distance / 500  # Bonus si on se rapproche
 
         # Pénalité progressive pour la proximité au soleil
-        reward -= max(1 - distance_sun / 1000, 0)
+        if distance_sun < 500:
+            # Pénalité plus douce en s'approchant
+            reward -= (500 - distance_sun) / 500
+        elif distance_sun > 3000:
+            # Pénalité croissante si trop loin
+            reward -= (distance_sun - 3000) / 2000
 
         # Récompense progressive pour atteindre l’objectif
         if distance_target < 200:
-            reward += 100 * (1 - distance_target / 200)
+            reward += 1000
             self._current_target += 1
             print(f"Score : {self._current_target}")
             if self._current_target == self.nb_planets:
-                return 100, True
+                return 1000, True  # Fin de l'épisode si toutes les planètes sont visitées
 
         # Récompense basée sur l'accélération (direction vers la cible)
         acceleration = self._get_acceleration()
         direction_to_target = self._planet_data[self._target_ids[self._current_target] * 6:
                                                 self._target_ids[self._current_target] * 6 + 3] - self._ship_data[0:3]
+
         # Normalisation
         direction_to_target /= np.linalg.norm(direction_to_target)
 
         alignment_reward = np.dot(acceleration, direction_to_target)
 
+        # Modulation de la récompense d'alignement selon la distance
+        # Diminue l'importance en se rapprochant
+        weight = min(1, distance_target / 1000)
         if alignment_reward > 0:
-            reward += alignment_reward * 5  # Bonus si aligné
+            reward += weight * alignment_reward * 5  # Bonus si aligné
         else:
-            reward += alignment_reward * 2  # Petite pénalité si opposé
+            reward += weight * alignment_reward * 2  # Pénalité si opposé
 
-        return reward, False  # Retourne aussi la distance mise à jour
+        # print(reward)
+        return reward, False  # Pas encore terminé
 
     def step(self, action):
         # Augmenter le nombre de pas
