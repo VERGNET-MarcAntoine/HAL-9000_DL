@@ -184,9 +184,9 @@ class Ship(gym.Env):
 
         # Récupération des distances actuelles
         distance_target = self._get_distance_target()
-        new_distance_sun = self._get_sun_distance()
+        distance_sun = self._get_sun_distance()
         # Vérification de dépassement de la distance maximale
-        if new_distance_sun > 6000:
+        if distance_sun > 6000 or distance_sun < 200:
             # Reward très négative et signal pour arrêter l'épisode
             return -1000, True
 
@@ -198,7 +198,7 @@ class Ship(gym.Env):
             reward += delta_distance / 500  # Récompense pour la réduction de distance
 
         # Pénalité progressive pour la proximité au soleil
-        reward -= max(1 - new_distance_sun / 1000, 0)
+        reward -= max(1 - distance_sun / 1000, 0)
 
         # Récompense progressive pour atteindre l’objectif
         if distance_target < 200:
