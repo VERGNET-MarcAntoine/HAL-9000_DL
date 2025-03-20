@@ -6,13 +6,15 @@ import time
 import os
 from dotenv import load_dotenv
 
+import pprint
+
 load_dotenv()
 
 sleep_time = float(os.getenv("SLEEP_TIME"))
 episode_time = int(os.getenv("EPISODE_TIME"))
 
 
-class BoneShip(gym.Env):
+class Ship(gym.Env):
     """Custom Environment that follows gym interface."""
 
     def __init__(self, websocket_url: str = "ws://127.0.0.1:3012"):
@@ -35,7 +37,7 @@ class BoneShip(gym.Env):
 
         # initialisation des variable
         # Initialize with zeros, size 9
-        self._ship_data = np.zeros(9, dtype=np.float64)
+        self._ship_data = np.zeros(6, dtype=np.float64)
         # Initialize with zeros, size nb_planets * 6
         self._planets_data = np.zeros(self.nb_planets * 6, dtype=np.float64)
         # Espace d'action: 10 valeurs binaires (6 moteurs de translation + 4 moteurs de rotation)
@@ -48,14 +50,14 @@ class BoneShip(gym.Env):
         self.observation_space = gym.spaces.Dict(
             {
                 "ship": gym.spaces.Box(
-                    low=-np.inf, high=np.inf, shape=(9,), dtype=np.float64
+                    low=-np.inf, high=np.inf, shape=(6,), dtype=np.float64
                 ),
                 "target": gym.spaces.Box(
                     low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64
-                ),
-                "planets": gym.spaces.Box(
-                    low=-np.inf, high=np.inf, shape=(obs_planets_size,), dtype=np.float64
-                )
+                )  # ,
+                # "planets": gym.spaces.Box(
+                #    low=-np.inf, high=np.inf, shape=(obs_planets_size,), dtype=np.float64
+                # )
             }
         )
 
@@ -97,15 +99,15 @@ class BoneShip(gym.Env):
 
         combined_data.extend(ship["position"])
         combined_data.extend(ship["speed"])
-        combined_data.extend(ship["direction"])
+        # combined_data.extend(ship["direction"])
 
         return np.array(combined_data)
 
     def _get_obs(self):
         return {
             "ship": self._ship_data,
-            "target": np.array(self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3], dtype=np.float64),
-            "planets": self._planet_data
+            "target": np.array(self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3], dtype=np.float64)
+            # "planets": self._planet_data
         }
 
     def _get_info(self):
@@ -162,43 +164,96 @@ class BoneShip(gym.Env):
         self.score = 0
         return observation, info
 
+    def _get_acceleration(self):
+        """Estime l'accélération en prenant la variation de vitesse entre deux pas de temps."""
+        if not hasattr(self, "_previous_speed"):
+            self._previous_speed = np.array(
+                self._ship_data[3:6])  # Stocke la vitesse initiale
+
+        acceleration = np.array(self._ship_data[3:6]) - self._previous_speed
+        # Met à jour la vitesse précédente
+        self._previous_speed = np.array(self._ship_data[3:6])
+
+        return acceleration
+
+    def _compute_reward(self, previous_distance_target):
+        """
+        Calcule la récompense en fonction de la distance à la cible,
+        de la proximité au soleil et de l'optimisation de l'utilisation des moteurs.
+        """
+
+        # Récupération des distances actuelles
+        distance_target = self._get_distance_target()
+        new_distance_sun = self._get_sun_distance()
+
+        # Récompense principale : réduction de la distance cible
+        delta_distance = previous_distance_target - distance_target
+        reward = - distance_target / 20000  # Récompense négative basée sur la distance
+
+        if delta_distance > 0:
+            reward += delta_distance / 500  # Récompense pour la réduction de distance
+
+        # Pénalité progressive pour la proximité au soleil
+        reward -= max(1 - new_distance_sun / 1000, 0)
+
+        # Récompense progressive pour atteindre l’objectif
+        if distance_target < 200:
+            reward += 100 * (1 - distance_target / 200)
+            self._current_target += 1
+            print(f"Score : {self._current_target}")
+
+        # Récompense basée sur l'accélération (direction vers la cible)
+        acceleration = self._get_acceleration()
+        direction_to_target = self._planet_data[self._target_ids[self._current_target] * 6:
+                                                self._target_ids[self._current_target] * 6 + 3] - self._ship_data[0:3]
+        # Normalisation
+        direction_to_target /= np.linalg.norm(direction_to_target)
+
+        alignment_reward = np.dot(acceleration, direction_to_target)
+
+        if alignment_reward > 0:
+            reward += alignment_reward * 5  # Bonus si aligné
+        else:
+            reward += alignment_reward * 2  # Petite pénalité si opposé
+
+        return reward  # Retourne aussi la distance mise à jour
+
     def step(self, action):
-        # Increase the number of step
+        # Augmenter le nombre de pas
         terminated = False
         truncated = False
         self._num_step += 1
 
+        previous_distance_target = self._get_distance_target()
+
+        # Envoi des commandes au vaisseau
         command_engine, command_rotation = self._action_to_command(action)
         self.client.send_command(command_engine, command_rotation)
 
-        time.sleep(sleep_time)  # the sleep between 2 frame
+        time.sleep(sleep_time)  # Pause entre deux frames
 
-       # Get the new state after sending the command
+        # Mise à jour de l'état après l'action
         self.state = self.client.get_state()
         self._ship_data = self._get_ship_data()
         self._planet_data = self._get_planet_data()
 
-        new_distance_sun = self._get_sun_distance()
+        # Calcul de la récompense
+        reward = self._compute_reward(previous_distance_target)
 
-        distance_target = self._get_distance_target()
-
-        reward = - distance_target / 20000
-
+        # Vérification de la fin de l'épisode
         if self._num_step > self._max_step:
             truncated = True
 
-        elif new_distance_sun < 200:
-            reward = -1
-
-        elif distance_target < 200:
-            reward = 100
-            self._current_target += 1
-            print(f"Score : {self._current_target}")
-
+        # Mise à jour de la récompense globale
         self._global_reward += reward
 
+        # Préparation de l'observation et des infos
         observation = self._get_obs()
         info = self._get_info()
+
+        print(reward)
+        # pprint.pprint(command_engine)
+        # pprint.pprint(observation)
 
         return observation, reward, terminated, truncated, info
 

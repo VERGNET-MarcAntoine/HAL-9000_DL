@@ -1,6 +1,6 @@
 import os
 import torch
-from bone_ship import BoneShip
+from ship import Ship
 from stable_baselines3 import PPO
 from dotenv import load_dotenv
 
@@ -21,7 +21,7 @@ model_path = os.path.join(models_dir, model)
 
 # Initialiser l'environnement
 # Assurez-vous que l'environnement peut afficher les résultats
-env = BoneShip()
+env = Ship()
 
 # Charger le modèle entraîné
 model = PPO.load(model_path, env=env, device="cpu")

@@ -1,5 +1,5 @@
 import os
-from bone_ship import BoneShip
+from ship import Ship
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3 import A2C, PPO
 from datetime import datetime
@@ -22,7 +22,7 @@ model_path = os.path.join(models_dir, model)
 # Utilisation de datetime pour formater la date et l'heure
 start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 
-env = BoneShip()
+env = Ship()
 
 model_name = "PPO_BoneShip"  # Nom du modèle
 log_name = f"{model_name}_{start_time}"  # Format des logs
