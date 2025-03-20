@@ -185,6 +185,10 @@ class Ship(gym.Env):
         # Récupération des distances actuelles
         distance_target = self._get_distance_target()
         new_distance_sun = self._get_sun_distance()
+        # Vérification de dépassement de la distance maximale
+        if new_distance_sun > 6000:
+            # Reward très négative et signal pour arrêter l'épisode
+            return -1000, True
 
         # Récompense principale : réduction de la distance cible
         delta_distance = previous_distance_target - distance_target
@@ -201,6 +205,8 @@ class Ship(gym.Env):
             reward += 100 * (1 - distance_target / 200)
             self._current_target += 1
             print(f"Score : {self._current_target}")
+            if self._current_target == self.nb_planets:
+                return 100, True
 
         # Récompense basée sur l'accélération (direction vers la cible)
         acceleration = self._get_acceleration()
@@ -216,7 +222,7 @@ class Ship(gym.Env):
         else:
             reward += alignment_reward * 2  # Petite pénalité si opposé
 
-        return reward  # Retourne aussi la distance mise à jour
+        return reward, False  # Retourne aussi la distance mise à jour
 
     def step(self, action):
         # Augmenter le nombre de pas
@@ -238,7 +244,7 @@ class Ship(gym.Env):
         self._planet_data = self._get_planet_data()
 
         # Calcul de la récompense
-        reward = self._compute_reward(previous_distance_target)
+        reward, terminated = self._compute_reward(previous_distance_target)
 
         # Vérification de la fin de l'épisode
         if self._num_step > self._max_step:
