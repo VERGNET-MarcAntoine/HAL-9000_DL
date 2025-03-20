@@ -251,7 +251,6 @@ class Ship(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
 
-        print(reward)
         # pprint.pprint(command_engine)
         # pprint.pprint(observation)
 

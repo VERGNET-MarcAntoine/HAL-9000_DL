@@ -36,7 +36,7 @@ if model_path and os.path.exists(model_path + ".zip"):
     model = PPO.load(model_path, env=env, tensorboard_log=logdir, device="cpu")
 else:
     print("Aucun modèle existant trouvé, création d'un nouveau modèle.")
-    model = PPO("MultiInputPolicy", env, verbose=1,
+    model = PPO("MultiInputPolicy", env,
                 tensorboard_log=logdir, device="cpu")
 
 for i in range(save_number):
