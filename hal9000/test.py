@@ -1,6 +1,8 @@
 import os
 import torch
 from hal9000.model.Hal9000_2D_V0 import Hal9000_2D_V0
+from hal9000.ship import Ship
+
 from stable_baselines3 import PPO
 from dotenv import load_dotenv
 
@@ -21,7 +23,7 @@ model_path = os.path.join(models_dir, model)
 
 # Initialiser l'environnement
 # Assurez-vous que l'environnement peut afficher les résultats
-env = Hal9000_2D_V0()
+env = Ship()
 
 # Charger le modèle entraîné
 model = PPO.load(model_path, env=env)
