@@ -43,7 +43,7 @@ class Hal9000_2D_V0(Ship2D):
             previous_ship_data[0:2] - previous_planet_data[0:2])
         distance_sun = np.linalg.norm(ship_data[0:2] - planet_data[0:2])
 
-        if distance_sun > 10000 or distance_sun < 150:
+        if distance_sun > 20000 or distance_sun < 150:
             return -1000, True  # Mort fin de l'eposide avec pénalité sevére
 
         previous_distance_target = np.linalg.norm(
@@ -92,11 +92,10 @@ class Hal9000_2D_V0(Ship2D):
             reward += weight * alignment_reward * 2  # Pénalité si opposé
 
         speed_norm = np.linalg.norm(ship_data[2:4])
-        if speed_norm < 15:  # Trop lent, risque de stagnation
-            reward -= (15 - speed_norm) / 2  # Pénalité progressive
-        elif speed_norm > 120:  # Trop rapide, risque de perte de contrôle
-            reward -= (speed_norm - 120) / 10  # Pénalité progressive
-        print(reward)
+        if speed_norm < 100:  # Trop lent, risque de stagnation
+            reward -= (100 - speed_norm) / 2  # Pénalité progressive
+        elif speed_norm > 500:  # Trop rapide, risque de perte de contrôle
+            reward -= (speed_norm - 500) / 10  # Pénalité progressive
         return reward, False
 
 
@@ -114,14 +113,32 @@ if __name__ == "__main__":
     os.makedirs(logdir, exist_ok=True)
     os.makedirs(models_dir, exist_ok=True)
 
-    model = PPO("MultiInputPolicy", hal9000,
-                tensorboard_log=logdir, device="cpu")
-
     number_episode = int(os.getenv("NUMBER_EPISODE"))
     save_number = int(os.getenv("SAVE_NUMBER"))
 
     TIMESTEPS = (number_episode * episode_time * 60 * 4) // save_number
     model_name = "hal9000_2D_V0"  # Nom du modèle
+
+    existing_models = [f for f in os.listdir(models_dir) if f.startswith(model_name) and f.endswith(".zip")]
+
+    if existing_models:
+        def extract_timestep(filename):
+            try:
+                return int(filename.split("_step")[1].split(".zip")[0])
+            except (IndexError, ValueError):
+                return 0
+
+        existing_models.sort(key=extract_timestep)
+
+        latest_model_path = os.path.join(models_dir, existing_models[-1])
+        model = PPO.load(latest_model_path, env=hal9000)
+        print(f"Modèle existant chargé : {latest_model_path}")
+        loaded_timesteps = extract_timestep(existing_models[-1])
+    else:
+
+        model = PPO("MultiInputPolicy", hal9000, tensorboard_log=logdir)
+        print("Nouveau modèle créé.")
+        loaded_timesteps = 0
 
     start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     log_name = f"{model_name}_{start_time}"  # Format des logs
@@ -129,8 +146,11 @@ if __name__ == "__main__":
     for i in range(save_number):
         model.learn(total_timesteps=TIMESTEPS,
                     reset_num_timesteps=False, tb_log_name=log_name)
+        
+        total_steps = loaded_timesteps + TIMESTEPS * (i + 1)
+        new_model_path = os.path.join(models_dir, f"{log_name}_step{total_steps}.zip")
 
-        new_model_path = f"{models_dir}/{log_name}_step{TIMESTEPS * (i + 1)}"
+        print(new_model_path)
         model.save(new_model_path)
 
     hal9000.close()

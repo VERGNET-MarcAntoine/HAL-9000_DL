@@ -1,6 +1,6 @@
 import os
 import torch
-from ship import Ship
+from hal9000.model.Hal9000_2D_V0 import Hal9000_2D_V0
 from stable_baselines3 import PPO
 from dotenv import load_dotenv
 
@@ -21,10 +21,10 @@ model_path = os.path.join(models_dir, model)
 
 # Initialiser l'environnement
 # Assurez-vous que l'environnement peut afficher les résultats
-env = Ship()
+env = Hal9000_2D_V0()
 
 # Charger le modèle entraîné
-model = PPO.load(model_path, env=env, device="cpu")
+model = PPO.load(model_path, env=env)
 
 episodes = 10  # Nombre d'épisodes à tester
 

@@ -1,4 +1,4 @@
-from websocket_client import SpaceshipWebSocketClient
+from hal9000.websocket.websocket_client import SpaceshipWebSocketClient
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
