@@ -32,7 +32,7 @@ def update(frame):
     ship_positions = np.array(
         [ship["body"]["position"][0:2] for ship in ships])
     # Vérifie que les données sont bien en (x, y)
-    planet_positions = np.array([planet[1][0:2] for planet in planets[1:-1]])
+    planet_positions = np.array([planet[1][0:2] for planet in planets[1::]])
 
     sun_positions = np.array([planets[0][1][0:2]])
     # Mise à jour des données

@@ -1,12 +1,11 @@
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
-from websocket_client import SpaceshipWebSocketClient
+from websocket.websocket_client import SpaceshipWebSocketClient
 import time
 import os
 from dotenv import load_dotenv
-
-import pprint
+from stable_baselines3.common.env_checker import check_env
 
 load_dotenv()
 
@@ -30,7 +29,7 @@ class Ship(gym.Env):
         client.disconnect()
 
         self.client = None
-        # Récuperer nb_planets automatiquement en regardant etat système -1 car le soleil est considerer comme une planete
+        # Récuperer nb_planets automatiquement en regardanetatt  système -1 car le soleil est considerer comme une planete
         self.nb_planets = len(init_state["planets"])
 
         self._max_step = episode_time*60*4
@@ -54,10 +53,10 @@ class Ship(gym.Env):
                 ),
                 "target": gym.spaces.Box(
                     low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64
-                )  # ,
-                # "planets": gym.spaces.Box(
-                #    low=-np.inf, high=np.inf, shape=(obs_planets_size,), dtype=np.float64
-                # )
+                ),
+                "planets": gym.spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(obs_planets_size,), dtype=np.float64
+                )
             }
         )
 
@@ -106,8 +105,8 @@ class Ship(gym.Env):
     def _get_obs(self):
         return {
             "ship": self._ship_data,
-            "target": np.array(self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3], dtype=np.float64)
-            # "planets": self._planet_data
+            "target": np.array(self._planet_data[self._target_ids[self._current_target]*6:self._target_ids[self._current_target]*6+3], dtype=np.float64),
+            "planets": self._planet_data
         }
 
     def _get_info(self):
@@ -156,7 +155,7 @@ class Ship(gym.Env):
         self._norme = self._get_norme()
 
         observation = self._get_obs()
-
+        print(observation)
         self._num_step = 0
         self._global_reward = 0
         info = self._get_info()
@@ -192,10 +191,12 @@ class Ship(gym.Env):
 
         # Récompense principale : réduction de la distance cible
         delta_distance = previous_distance_target - distance_target
-        reward = -distance_target / 20000  # Récompense négative basée sur la distance
+        # Récompense négative basée sur la distance
+        reward = (-distance_target / 20000)
 
         if delta_distance > 0:
-            reward += delta_distance / 500  # Bonus si on se rapproche
+            # Bonus si on se rapproche
+            reward += (delta_distance / 500)
 
         # Pénalité progressive pour la proximité au soleil
         if distance_sun < 500:
@@ -268,7 +269,12 @@ class Ship(gym.Env):
         info = self._get_info()
 
         # pprint.pprint(command_engine)
-        # pprint.pprint(observation)
+        speed_norm = np.linalg.norm(self._ship_data[3:6])
+
+        if speed_norm < 15:  # Trop lent, risque de stagnation
+            reward -= (15 - speed_norm) / 2  # Pénalité progressive
+        elif speed_norm > 120:  # Trop rapide, risque de perte de contrôle
+            reward -= (speed_norm - 120) / 10  # Pénalité progressive
 
         return observation, reward, terminated, truncated, info
 
@@ -276,3 +282,12 @@ class Ship(gym.Env):
         if self.client:
             if self.client.connected:
                 self.client.disconnect()
+
+
+if __name__ == "__main__":
+    load_dotenv()
+    step_time = float(os.getenv("SLEEP_TIME"))
+    episode_time = int(os.getenv("EPISODE_TIME"))
+
+    env = Ship()
+    check_env(env)
