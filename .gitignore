@@ -1,3 +1,10 @@
-./venv
+.venv
 outer-wilds-front/
 rust-server/
+.env
+
+logs/
+models/
+# Cache files
+__pycache__/
+*.pyc
