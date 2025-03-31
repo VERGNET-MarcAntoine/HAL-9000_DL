@@ -34,7 +34,7 @@ class Hal9000_2D_V0(Ship2D):
         previous_target_data, previous_planet_data = self.get_planet_data(
             previous_state)
 
-        ship_data = self.get_ship_data(previous_state)
+        ship_data = self.get_ship_data(self.state)
         target_data, planet_data = self.get_planet_data(
             self.state)
 

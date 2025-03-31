@@ -117,7 +117,7 @@ if __name__ == "__main__":
     save_number = int(os.getenv("SAVE_NUMBER"))
 
     TIMESTEPS = (number_episode * episode_time * 60 * 4) // save_number
-    model_name = "hal9000_2D_V0"  # Nom du modèle
+    model_name = __file__.split("\\")[-1].split("/")[-1].split(".")[0]  # Nom du modèle
 
     existing_models = [f for f in os.listdir(models_dir) if f.startswith(model_name) and f.endswith(".zip")]
 

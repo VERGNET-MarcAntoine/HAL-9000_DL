@@ -80,7 +80,7 @@ class SpaceshipWebSocketClient:
     
     def _on_open(self, ws):
         """Callback lors de l'ouverture de la connexion."""
-        print("Connexion WebSocket établie")
+        #print("Connexion WebSocket établie")
         self.connected = True
     
     def _on_message(self, ws, message):
@@ -98,7 +98,7 @@ class SpaceshipWebSocketClient:
     
     def _on_close(self, ws, close_status_code, close_msg):
         """Callback lors de la fermeture de la connexion."""
-        print(f"Connexion WebSocket fermée: {close_status_code} - {close_msg}")
+        #print(f"Connexion WebSocket fermée: {close_status_code} - {close_msg}")
         self.connected = False
 
 
