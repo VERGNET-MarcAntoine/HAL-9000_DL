@@ -36,66 +36,80 @@ class Hal9000_2D_V0(Ship2D):
             previous_state)
 
         ship_data = self.get_ship_data(self.state)
-        target_data, planet_data = self.get_planet_data(
-            self.state)
+        target_data, planet_data = self.get_planet_data(self.state)
 
+        # print(f"""
+        # --- ÉTAT PRÉCÉDENT ---
+        # Vaisseau: {previous_ship_data}
+        # Cible: {previous_target_data}
+        # Planètes: {previous_planet_data}
+
+        # --- ÉTAT ACTUEL ---
+        # Vaisseau: {ship_data}
+        # Cible: {target_data}
+        # Planètes: {planet_data}
+        # """)
+
+        previous_ship_data = self.get_ship_data(previous_state)
+        previous_target_data, previous_planet_data = self.get_planet_data(
+            previous_state)
+
+        ship_data = self.get_ship_data(self.state)
+        target_data, planet_data = self.get_planet_data(self.state)
+
+        # Calcul des distances
         previous_distance_sun = np.linalg.norm(
             previous_ship_data[0:2] - previous_planet_data[0:2])
         distance_sun = np.linalg.norm(ship_data[0:2] - planet_data[0:2])
 
+        # Vérification des limites de la gravité et fin d'épisode si nécessaire
         if distance_sun > 20000 or distance_sun < 150:
-            return -1000, True  # Mort fin de l'eposide avec pénalité sevére
+            # Pénalité sévère et fin de l'épisode si trop loin ou trop près du soleil
+            return -1000, True
 
+        # Calcul des distances par rapport à la cible
         previous_distance_target = np.linalg.norm(
             previous_ship_data[0:2] - previous_target_data[0:2])
         distance_target = np.linalg.norm(ship_data[0:2] - target_data[0:2])
 
+        # Calcul de la variation de la distance à la cible
         delta_distance = previous_distance_target - distance_target
 
-        # Récompense principale : réduction de la distance cible
-        reward = (-distance_target / 20000)
+        # Récompense pour la réduction de la distance cible
+        reward = delta_distance / distance_target
 
-        if delta_distance > 0:
-            # Bonus si on se rapproche
-            reward += (delta_distance / 500)
+        # Récompense pour accélérer vers la cible (calcul de l'accélération)
+        acceleration = ship_data[2:4] - previous_ship_data[2:4]
+        target_direction = target_data[0:2] - ship_data[0:2]
+        # Normalisation pour obtenir une direction unitaire
+        target_direction /= np.linalg.norm(target_direction)
 
-        # Pénalité progressive pour la proximité au soleil
-        if distance_sun < 500:
-            # Pénalité plus douce en s'approchant
-            reward -= (500 - distance_sun) / 500
-        elif distance_sun > 3000:
-            # Pénalité croissante si trop loin
-            reward -= (distance_sun - 3000) / 2000
+        # Calcul du produit scalaire entre l'accélération et la direction de la cible (récompense si on accélère dans la bonne direction)
+        acceleration_dot_target = np.dot(acceleration, target_direction)
+        # Récompense proportionnelle à l'alignement de l'accélération avec la cible
+        reward += 10 * acceleration_dot_target
 
-        # Récompense progressive pour atteindre l’objectif
+        # Pénalisation pour accélérer dans la direction opposée à la cible
+        if acceleration_dot_target < 0:
+            reward -= 5  # Pénalité si l'accélération est dirigée à l'opposé de la cible
+
+        # Récompense basée sur la vitesse (bonus pour une vitesse modérée et efficace)
+        speed = np.linalg.norm(ship_data[2:4])
+        if speed > 50:
+            # Pénalisation si la vitesse est trop élevée (risque de dépassement ou de gaspillage de carburant)
+            reward -= 1
+
+        # Récompense pour atteindre l'objectif
         if distance_target < 200:
-            reward += 1000
+            reward += 1000  # Grande récompense lorsqu'on atteint la cible
             self.current_target += 1
             print(f"Score : {self.current_target}")
             if self.current_target == (self.nb_planets-1):
                 self.current_target = 0
+            # Retourner la récompense et l'indication que l'épisode n'est pas encore terminé
+            return reward, False
 
-        # Récompense basée sur l'accélération (direction vers la cible)
-        acceleration = ship_data[2:4] - previous_ship_data[2:4]
-
-        direction_to_target = target_data[0:2] - ship_data[0:2]
-        # Normalisation
-        direction_to_target /= np.linalg.norm(direction_to_target)
-        alignment_reward = np.dot(acceleration, direction_to_target)
-        # Modulation de la récompense d'alignement selon la distance
-        # Diminue l'importance en se rapprochant
-        weight = min(1, distance_target / 1000)
-
-        if alignment_reward > 0:
-            reward += weight * alignment_reward * 5  # Bonus si aligné
-        else:
-            reward += weight * alignment_reward * 2  # Pénalité si opposé
-
-        speed_norm = np.linalg.norm(ship_data[2:4])
-        if speed_norm < 100:  # Trop lent, risque de stagnation
-            reward -= (100 - speed_norm) / 2  # Pénalité progressive
-        elif speed_norm > 500:  # Trop rapide, risque de perte de contrôle
-            reward -= (speed_norm - 500) / 10  # Pénalité progressive
+        # Retourner la récompense et indiquer que l'épisode continue
         return reward, False
 
 

@@ -55,5 +55,5 @@ def update(frame):
 
 
 # Animation
-ani = FuncAnimation(fig, update, interval=100)  # Mise à jour toutes les 100ms
+ani = FuncAnimation(fig, update, interval=33)  # Mise à jour toutes les 100ms
 plt.show()

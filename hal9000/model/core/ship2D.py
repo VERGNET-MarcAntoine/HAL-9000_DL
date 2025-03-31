@@ -184,8 +184,7 @@ class Ship2D(gym.Env):
         time.sleep(0.01)
 
         # Initialisation du parcours du vaisseau
-        self.target_ids = np.random.choice(
-            np.arange(1, self.nb_planets), size=self.nb_planets - 1, replace=False)
+        self.target_ids = np.arange(2, self.nb_planets)
 
         # Initialisation variable a chaque rest
         self.current_target = 0

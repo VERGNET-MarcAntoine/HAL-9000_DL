@@ -92,10 +92,10 @@ class Hal9000_2D_V0(Ship2D):
             reward += weight * alignment_reward * 2  # Pénalité si opposé
 
         speed_norm = np.linalg.norm(ship_data[2:4])
-        if speed_norm < 100:  # Trop lent, risque de stagnation
-            reward -= (100 - speed_norm) / 2  # Pénalité progressive
-        elif speed_norm > 500:  # Trop rapide, risque de perte de contrôle
-            reward -= (speed_norm - 500) / 10  # Pénalité progressive
+        if speed_norm < 5:  # Trop lent, risque de stagnation
+            reward -= (5 - speed_norm) / 2  # Pénalité progressive
+        elif speed_norm > 100:  # Trop rapide, risque de perte de contrôle
+            reward -= (speed_norm - 100) / 10  # Pénalité progressive
         return reward, False
 
 

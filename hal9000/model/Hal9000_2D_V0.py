@@ -72,7 +72,7 @@ class Hal9000_2D_V0(Ship2D):
             reward += 1000
             self.current_target += 1
             print(f"Score : {self.current_target}")
-            if self.current_target == self.nb_planets:
+            if self.current_target == (self.nb_planets-1):
                 self.current_target = 0
 
         # Récompense basée sur l'accélération (direction vers la cible)
@@ -117,9 +117,11 @@ if __name__ == "__main__":
     save_number = int(os.getenv("SAVE_NUMBER"))
 
     TIMESTEPS = (number_episode * episode_time * 60 * 4) // save_number
-    model_name = __file__.split("\\")[-1].split("/")[-1].split(".")[0]  # Nom du modèle
+    model_name = __file__.split(
+        "\\")[-1].split("/")[-1].split(".")[0]  # Nom du modèle
 
-    existing_models = [f for f in os.listdir(models_dir) if f.startswith(model_name) and f.endswith(".zip")]
+    existing_models = [f for f in os.listdir(
+        models_dir) if f.startswith(model_name) and f.endswith(".zip")]
 
     if existing_models:
         def extract_timestep(filename):
@@ -146,9 +148,10 @@ if __name__ == "__main__":
     for i in range(save_number):
         model.learn(total_timesteps=TIMESTEPS,
                     reset_num_timesteps=False, tb_log_name=log_name)
-        
+
         total_steps = loaded_timesteps + TIMESTEPS * (i + 1)
-        new_model_path = os.path.join(models_dir, f"{log_name}_step{total_steps}.zip")
+        new_model_path = os.path.join(
+            models_dir, f"{log_name}_step{total_steps}.zip")
 
         print(new_model_path)
         model.save(new_model_path)
