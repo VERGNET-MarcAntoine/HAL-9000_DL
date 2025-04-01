@@ -104,7 +104,7 @@ class Hal9000_2D_V0(Ship2D):
             reward += 1000  # Grande récompense lorsqu'on atteint la cible
             self.current_target += 1
             print(f"Score : {self.current_target}")
-            if self.current_target == (self.nb_planets-1):
+            if self.current_target == self.nb_planets:
                 self.current_target = 0
             # Retourner la récompense et l'indication que l'épisode n'est pas encore terminé
             return reward, False
@@ -117,6 +117,8 @@ if __name__ == "__main__":
     load_dotenv()
     episode_time = int(os.getenv("EPISODE_TIME"))
     step_time = float(os.getenv("SLEEP_TIME"))
+    number_episode = int(os.getenv("NUMBER_EPISODE"))
+    save_number = int(os.getenv("SAVE_NUMBER"))
 
     hal9000 = Hal9000_2D_V0(episode_time, step_time)
     check_env(hal9000)
@@ -127,10 +129,6 @@ if __name__ == "__main__":
     os.makedirs(logdir, exist_ok=True)
     os.makedirs(models_dir, exist_ok=True)
 
-    number_episode = int(os.getenv("NUMBER_EPISODE"))
-    save_number = int(os.getenv("SAVE_NUMBER"))
-
-    TIMESTEPS = (number_episode * episode_time * 60 * 4) // save_number
     model_name = __file__.split(
         "\\")[-1].split("/")[-1].split(".")[0]  # Nom du modèle
     print(model_name)
@@ -151,7 +149,6 @@ if __name__ == "__main__":
         print(f"Modèle existant chargé : {latest_model_path}")
         loaded_timesteps = extract_timestep(existing_models[-1])
     else:
-
         model = PPO("MultiInputPolicy", hal9000, tensorboard_log=logdir)
         print("Nouveau modèle créé.")
         loaded_timesteps = 0
@@ -159,13 +156,25 @@ if __name__ == "__main__":
     start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     log_name = f"{model_name}_{start_time}"  # Format des logs
 
-    for i in range(save_number):
-        model.learn(total_timesteps=TIMESTEPS,
+    # Calculer le nombre de timesteps par épisode
+    timesteps_per_episode = episode_time * 60 * 4
+
+    # Calculer le nombre de timesteps pour SAVE_NUMBER épisodes
+    timesteps_for_save = timesteps_per_episode * save_number
+
+    # Calculer le nombre total de timesteps à entraîner
+    total_train_timesteps = number_episode * timesteps_per_episode
+
+    # Entraîner et sauvegarder tous les SAVE_NUMBER épisodes
+    current_timesteps = loaded_timesteps
+    while current_timesteps < total_train_timesteps:
+        # Entraîner pour SAVE_NUMBER épisodes
+        model.learn(total_timesteps=timesteps_for_save,
                     reset_num_timesteps=False, tb_log_name=log_name)
 
-        total_steps = loaded_timesteps + TIMESTEPS * (i + 1)
+        current_timesteps += timesteps_for_save
         new_model_path = os.path.join(
-            models_dir, f"{log_name}_step{total_steps}.zip")
+            models_dir, f"{log_name}_step{current_timesteps}.zip")
 
         print(new_model_path)
         model.save(new_model_path)
