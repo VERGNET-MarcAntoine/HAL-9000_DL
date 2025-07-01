@@ -29,19 +29,19 @@ nvidia-cusparselt-cu12==0.6.2
 packaging==24.2
 pandas==2.2.3
 pillow==11.1.0
-protobuf==6.30.1
+protobuf~>6.31.1
 pyparsing==3.2.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 pytz==2025.1
-setuptools==76.0.0
+setuptools~>78.1.1
 six==1.17.0
 stable_baselines3==2.5.0
 standard-imghdr==3.13.0
 sympy==1.13.1
 tensorboard==2.19.0
 tensorboard-data-server==0.7.2
-torch==2.6.0
+torch~> 2.7.1-rc1
 triton==3.2.0
 typing_extensions==4.12.2
 tzdata==2025.1
