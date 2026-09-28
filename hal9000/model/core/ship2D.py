@@ -8,9 +8,9 @@ from hal9000.config import Config, load_config
 from hal9000.model import Hal9000_2D as task
 from hal9000.websocket.websocket_client import SpaceshipWebSocketClient
 
-# Un step est en retard s'il dépasse step_time de plus de 10 %
+# A step is late if it exceeds step_time by more than 10%
 OVERRUN_TOLERANCE = 1.1
-# Fréquence (en steps) de la vérification du retard, et part de steps en retard tolérée
+# Frequency (in steps) of the lateness check, and accepted share of late steps
 OVERRUN_CHECK_STEPS = 1000
 OVERRUN_MAX_RATIO = 0.2
 NO_ROTATION = {"left": False, "right": False, "up": False, "down": False}
@@ -18,10 +18,10 @@ NO_ROTATION = {"left": False, "right": False, "up": False, "down": False}
 
 def state_to_arrays(state: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Extrait les données 2D d'un état du serveur, sous la forme attendue par la tâche (n = 1).
+    Extracts the 2D data of a server state, in the form expected by the task (n = 1).
 
     Returns:
-        tuple: Positions (1, 6, 2) et vitesses (1, 6, 2) des corps, position (1, 2) et vitesse (1, 2) du vaisseau.
+        tuple: Positions (1, 6, 2) and speeds (1, 6, 2) of the bodies, position (1, 2) and speed (1, 2) of the ship.
     """
     planet_pos = np.array([p[1][:2] for p in state["planets"]])[None]
     planet_vel = np.array([p[1][:2] for p in state["planet_speeds"]])[None]
@@ -32,16 +32,16 @@ def state_to_arrays(state: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray, np
 
 class Ship2D(gym.Env):
     """
-    Environnement de la tâche Hal9000_2D connecté au serveur Rust : chaque épisode fait apparaître un
-    nouveau vaisseau (une connexion WebSocket), piloté au rythme de decision_interval simulé.
+    Environment of the Hal9000_2D task connected to the Rust server: each episode spawns a new ship
+    (a WebSocket connection), flown at the rhythm of decision_interval simulated seconds.
 
     Attributes:
-        config (Config): La configuration (voir config.toml).
-        max_step (int): Le nombre maximal d'étapes par épisode.
-        step_time (float): Le temps réel entre chaque étape en secondes.
-        client (SpaceshipWebSocketClient): Le client WebSocket du vaisseau courant.
-        task (Hal9000Task): L'état de la tâche (cibles, potentiel) pour ce vaisseau.
-        state (dict): Le dernier état reçu du serveur.
+        config (Config): The configuration (see config.toml).
+        max_step (int): The maximum number of steps per episode.
+        step_time (float): The real time between two steps, in seconds.
+        client (SpaceshipWebSocketClient): The WebSocket client of the current ship.
+        task (Hal9000Task): The state of the task (targets, progress) for this ship.
+        state (dict): The last state received from the server.
     """
 
     observation_space = task.observation_space
@@ -49,10 +49,10 @@ class Ship2D(gym.Env):
 
     def __init__(self, config: Config | None = None):
         """
-        Initialise l'environnement Ship2D.
+        Initializes the Ship2D environment.
 
         Args:
-            config (Config, optional): La configuration (par défaut, celle de config.toml).
+            config (Config, optional): The configuration (default: the one of config.toml).
         """
         super().__init__()
         self.config = config or load_config()
@@ -60,7 +60,10 @@ class Ship2D(gym.Env):
         self.step_time = self.config.step_time
         self.total_steps = 0
         self.overrun_steps = 0
-        self.client = None
+        self.current_step = 0
+        self.last_step_time = 0.0
+        self.state: dict = {}
+        self.client: SpaceshipWebSocketClient | None = None
         self.task = task.Hal9000Task(1, np.random.default_rng(), self.config.reward)
 
     def _observe(self) -> np.ndarray:
@@ -69,14 +72,14 @@ class Ship2D(gym.Env):
 
     def reset(self, *, seed=None, options=None) -> tuple[np.ndarray, dict]:
         """
-        Réinitialise l'environnement : déconnecte le vaisseau précédent et en fait apparaître un nouveau.
+        Resets the environment: disconnects the previous ship and spawns a new one.
 
         Args:
-            seed (int, optional): La graine aléatoire (ordre des cibles).
-            options (dict, optional): Les options de réinitialisation.
+            seed (int, optional): The random seed (order of the targets).
+            options (dict, optional): The reset options.
 
         Returns:
-            tuple[np.ndarray, dict]: L'observation initiale et les informations.
+            tuple[np.ndarray, dict]: The initial observation and the information.
         """
         super().reset(seed=seed)
         self.task.rng = self.np_random
@@ -93,18 +96,19 @@ class Ship2D(gym.Env):
 
     def step(self, action) -> tuple[np.ndarray, float, bool, bool, dict]:
         """
-        Envoie la poussée choisie, attend decision_interval simulé et calcule la récompense.
+        Sends the chosen thrust, waits decision_interval simulated seconds and computes the reward.
 
         Args:
-            action (int): L'action Discrete(9) (direction de poussée).
+            action (int): The Discrete(9) action (thrust direction).
 
         Returns:
-            tuple: L'observation, la récompense, si l'épisode est terminé (mort), s'il est tronqué
-                (durée maximale), et les informations (statistiques en fin d'épisode).
+            tuple: The observation, the reward, whether the episode is terminated (death), whether it is
+                truncated (maximum duration), and the information (statistics at the end of the episode).
         """
+        assert self.client is not None, "reset() must be called before step()"
         self.client.send_command(task.thrust_to_engines(task.THRUSTS[int(action)]), NO_ROTATION)
-        # On attend jusqu'à step_time après le step précédent (et non step_time après ce point) :
-        # le temps de calcul Python est absorbé et chaque step dure bien decision_interval simulé
+        # Wait until step_time after the previous step (and not step_time after this point): the Python
+        # computation time is absorbed and each step really lasts decision_interval simulated seconds
         elapsed = time.perf_counter() - self.last_step_time
         time.sleep(max(0.0, self.step_time - elapsed))
         self.check_overrun(elapsed)
@@ -117,9 +121,9 @@ class Ship2D(gym.Env):
         self.current_step += 1
         terminated = bool(dead[0])
         truncated = self.current_step >= self.max_step and not terminated
-        # Le serveur ne connaît pas les cibles : on les transmet pour l'affichage (display_ship2D --server)
-        info = {"ship": {"uuid": self.client.ship_uuid, "target": int(self.task.target()[0]),
-                         "reached": int(self.task.index[0])}}
+        # The server does not know the targets: they are sent for the display (display_ship2D --server)
+        info: dict = {"ship": {"uuid": self.client.ship_uuid, "target": int(self.task.target()[0]),
+                               "reached": int(self.task.index[0])}}
         if terminated or truncated:
             info["hal"] = {"targets": int(self.task.index[0]), "dead_sun": bool(events["dead_sun"][0]),
                            "dead_out": bool(events["dead_out"][0])}
@@ -127,11 +131,11 @@ class Ship2D(gym.Env):
 
     def check_overrun(self, elapsed: float):
         """
-        Signale quand Python n'arrive pas à tenir le rythme demandé : les steps durent alors plus
-        que decision_interval simulé et l'entraînement n'est plus synchronisé avec la simulation.
+        Reports when Python cannot keep the requested rhythm: the steps then last more than
+        decision_interval simulated seconds and the training is no longer synchronized with the simulation.
 
         Args:
-            elapsed (float): Le temps réel écoulé depuis le step précédent, en secondes.
+            elapsed (float): The real time elapsed since the previous step, in seconds.
         """
         self.total_steps += 1
         if elapsed > self.step_time * OVERRUN_TOLERANCE:
@@ -139,13 +143,13 @@ class Ship2D(gym.Env):
         if self.total_steps % OVERRUN_CHECK_STEPS == 0:
             ratio = self.overrun_steps / OVERRUN_CHECK_STEPS
             if ratio > OVERRUN_MAX_RATIO:
-                print(f"Attention : {ratio:.0%} des steps dépassent {self.step_time * 1000:.1f} ms, "
-                      "Python ne suit pas la simulation. Baissez [training] speedup ou n_envs dans config.toml.")
+                print(f"Warning: {ratio:.0%} of the steps exceed {self.step_time * 1000:.1f} ms, "
+                      "Python cannot keep up with the simulation. Lower [training] speedup or n_envs in config.toml.")
             self.overrun_steps = 0
 
     def close(self):
         """
-        Ferme la connexion WebSocket (le serveur supprime alors le vaisseau).
+        Closes the WebSocket connection (the server then removes the ship).
         """
         if self.client and self.client.connected:
             self.client.disconnect()

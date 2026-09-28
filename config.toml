@@ -1,58 +1,57 @@
-# Configuration de HAL-9000
+# HAL-9000 configuration
 #
-# La vitesse du serveur Rust et le rythme de l'environnement Python sont tous les deux
-# calculés à partir de `speedup` et `decision_interval` : ils restent synchronisés quelle
-# que soit l'accélération choisie.
+# The speed of the Rust server and the rhythm of the Python environment are both computed from
+# `speedup` and `decision_interval`: they stay synchronized whatever the chosen speed.
 
 [simulation]
-# Accélération de la simulation par rapport au temps réel pour regarder un modèle voler
-# (serveur lancé avec `uv run python -m hal9000.server`, evaluate --watch, display_ship2D).
-# 1 = temps réel, 5 = une orbite de Mercure en ~10 s au lieu de ~50 s.
+# Speed of the simulation compared to real time, to watch a model fly
+# (server started with `uv run python -m hal9000.server`, evaluate --watch, display_ship2D).
+# 1 = real time, 5 = an orbit of Mercury in ~10 s instead of ~50 s.
 speedup = 5
 
-# Temps simulé entre deux décisions de l'IA, en secondes. Doit être le même à l'entraînement
-# et au replay d'un modèle. Le serveur coupe les moteurs après 15 ticks (0.25 s) sans commande :
-# 0.2 s (12 ticks) laisse une marge si une commande arrive en retard.
+# Simulated time between two decisions of the AI, in seconds. Must be the same to train and to replay
+# a model. The server cuts the engines after 15 ticks (0.25 s) without a command: 0.2 s (12 ticks)
+# leaves a margin if a command arrives late.
 decision_interval = 0.2
 
 [server]
 websocket_url = "ws://127.0.0.1:3012"
-# Dossier du serveur Rust (branche deep_learning), relatif à la racine du projet
+# Directory of the Rust server (deep_learning branch), relative to the root of the project
 path = "rust-server"
 
 [training]
-# Entraînement sur le serveur Rust (serveur lancé avec `uv run python -m hal9000.server --train`) :
-# accélération et nombre de vaisseaux entraînés en parallèle sur le même serveur.
-# Plus c'est rapide, plus il y a de steps en retard (qui durent plus que decision_interval) :
-#   x25, 4 vaisseaux : 335 steps/s,  3 % de steps en retard
-#   x25, 6 vaisseaux : 514 steps/s,  7 %
-#   x40, 4 vaisseaux : 434 steps/s, 17 %
-# L'entraînement affiche un avertissement si Python ne suit plus.
+# Training on the Rust server (server started with `uv run python -m hal9000.server --train`):
+# speed and number of ships trained in parallel on the same server.
+# The faster, the more late steps (which last longer than decision_interval):
+#   x25, 4 ships: 335 steps/s,  3% late steps
+#   x25, 6 ships: 514 steps/s,  7%
+#   x40, 4 ships: 434 steps/s, 17%
+# The training prints a warning if Python cannot keep up.
 speedup = 25
 n_envs = 6
-# Entraînement sur la simulation numpy (réplique exacte de la physique du serveur, sans serveur) :
-# nombre de vaisseaux simulés en parallèle
+# Training on the numpy simulation (exact replica of the server physics, no server):
+# number of ships simulated in parallel
 sim_envs = 64
-# Durée maximale d'un épisode, en minutes simulées
+# Maximum duration of an episode, in simulated minutes
 episode_time = 10
-# Nombre total de steps d'entraînement, et fréquence de sauvegarde du modèle
+# Total number of training steps, and checkpoint frequency
 total_timesteps = 20_000_000
 save_every = 1_000_000
 
 [reward]
-# Récompense de la tâche Hal9000_2D (hal9000/model/Hal9000_2D.py)
+# Reward of the Hal9000_2D task (hal9000/model/Hal9000_2D.py)
 target_reward = 10.0
 death_penalty = 10.0
-# Distance parcourue vers la cible qui rapporte +1
+# Distance covered toward the target that earns +1
 shaping_scale = 1000.0
 
 [ppo]
 learning_rate = 3e-4
-# Nombre de steps collectés (tous vaisseaux confondus) avant chaque mise à jour
+# Number of steps collected (all ships together) before each update
 rollout_size = 16384
 batch_size = 2048
 n_epochs = 10
-# Horizon d'environ 1 / (1 - gamma) = 200 décisions, soit 40 s simulées
+# Horizon of about 1 / (1 - gamma) = 200 decisions, i.e. 40 simulated seconds
 gamma = 0.995
 gae_lambda = 0.95
 clip_range = 0.2

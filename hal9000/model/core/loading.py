@@ -5,24 +5,23 @@ from hal9000.config import Config
 
 def load_ppo(path: str, env, config: Config, n_envs: int, device: str = "cpu") -> PPO:
     """
-    Charge un modèle PPO sauvegardé en reprenant les hyperparamètres de la configuration.
+    Loads a saved PPO model with the hyperparameters of the configuration.
 
-    Les .zip SB3 contiennent les fonctions lr_schedule/clip_range sérialisées avec cloudpickle.
-    Les désérialiser sous une autre version de Python que celle de l'entraînement fait planter
-    l'interpréteur (segfault), et exécute du code arbitraire si le fichier n'est pas de confiance.
-    On fournit donc directement leurs valeurs : SB3 reconstruit les schedules sans les dépickler.
-    Attention : le .zip contient encore d'autres objets picklés (espaces, classe de policy),
-    ne charger que des modèles de confiance.
+    SB3 .zip files contain the lr_schedule/clip_range functions serialized with cloudpickle. Unpickling
+    them with another Python version than the one used for training crashes the interpreter (segfault),
+    and executes arbitrary code if the file is not trusted. Their values are therefore provided directly:
+    SB3 rebuilds the schedules without unpickling them. Warning: the .zip still contains other pickled
+    objects (spaces, policy class), only load trusted models.
 
     Args:
-        path (str): Le chemin du modèle (.zip).
-        env: L'environnement à associer au modèle.
-        config (Config): La configuration (section [ppo]).
-        n_envs (int): Le nombre de vaisseaux de env (pour la taille des rollouts).
-        device (str): Le device torch ("cpu", "cuda" ou "auto").
+        path (str): The path of the model (.zip).
+        env: The environment to attach to the model.
+        config (Config): The configuration ([ppo] section).
+        n_envs (int): The number of ships of env (for the size of the rollouts).
+        device (str): The torch device ("cpu", "cuda" or "auto").
 
     Returns:
-        PPO: Le modèle chargé.
+        PPO: The loaded model.
     """
     custom_objects = {
         "learning_rate": config.ppo["learning_rate"],

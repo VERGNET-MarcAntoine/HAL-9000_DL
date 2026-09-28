@@ -1,4 +1,4 @@
-"""Observations, récompense et fin d'épisode de la tâche Hal9000_2D."""
+"""Observations, reward and end of episode of the Hal9000_2D task."""
 import numpy as np
 import pytest
 
@@ -10,7 +10,7 @@ REWARD = load_config().reward
 
 
 def make_task():
-    """Une tâche sur un système solaire, avec la planète 3 (la Terre) comme première cible."""
+    """A task on a solar system, with planet 3 (the Earth) as first target."""
     sim = SolarSystemSim(1, np.random.default_rng(0))
     hal = task.Hal9000Task(1, np.random.default_rng(0), REWARD)
     hal.reset(np.array([0]), sim.planet_pos, sim.ship_pos)
@@ -19,7 +19,7 @@ def make_task():
 
 
 def place_ship(sim, hal, position):
-    """Place le vaisseau et remet le guidage à zéro à cette position."""
+    """Places the ship and resets the guidance at this position."""
     sim.ship_pos[0] = position
     hal.previous_distance[:] = hal._target_distance(sim.planet_pos, sim.ship_pos)
 
@@ -45,11 +45,11 @@ def test_death(distance, cause):
 
 
 def test_circling_the_target_earns_nothing():
-    """Le guidage récompense le progrès vers la cible : un tour complet autour d'elle ne rapporte rien."""
+    """The guidance rewards the progress toward the target: a full loop around it earns nothing."""
     sim, hal = make_task()
     target = sim.planet_pos[0, 3]
     angles = np.linspace(0, 2 * np.pi, 200)
-    radii = 1000 + 400 * np.sin(3 * angles)  # en s'approchant et en s'éloignant
+    radii = 1000 + 400 * np.sin(3 * angles)  # getting closer and farther
     positions = target + np.stack([radii * np.cos(angles), radii * np.sin(angles)], axis=-1)
     place_ship(sim, hal, positions[0])
     total = 0.0
@@ -61,7 +61,7 @@ def test_circling_the_target_earns_nothing():
 
 
 def test_observation_orbital_quantities():
-    """Vaisseau immobile au point d'apparition : ni vitesse radiale ni tangentielle, gravité ~0.15 x poussée."""
+    """Motionless ship at the spawn point: no radial nor tangential speed, gravity ~0.15 x thrust."""
     sim, hal = make_task()
     obs = hal.observe(sim.planet_pos, sim.planet_vel, sim.ship_pos, sim.ship_vel)[0]
     assert obs.shape == (task.OBSERVATION_SIZE,) and np.isfinite(obs).all()
@@ -73,8 +73,8 @@ def test_observation_orbital_quantities():
 
 
 def test_thrust_to_engines():
-    """Directions de poussée du serveur : left -> +x, right -> -x, up -> -y, down -> +y."""
+    """Thrust directions of the server: left -> +x, right -> -x, up -> -y, down -> +y."""
     engines = task.thrust_to_engines(np.array([1.0, -1.0]))
     assert engines["left"] and engines["up"] and not engines["right"] and not engines["down"]
-    assert all(isinstance(value, bool) for value in engines.values())  # sérialisable en JSON
+    assert all(isinstance(value, bool) for value in engines.values())  # JSON serializable
     assert not any(task.thrust_to_engines(np.zeros(2)).values())

@@ -1,7 +1,7 @@
 [project]
 name = "hal9000"
 version = "1.0.0"
-description = "Autopilotes entraînés par apprentissage par renforcement pour Outer Wilds Web"
+description = "Autopilot trained with reinforcement learning for Outer Wilds Web"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,20 +12,35 @@ dependencies = [
     "tensorboard>=2.19",
     "torch>=2.13",
     "websocket-client>=1.8",
-    # Versions minimales des dépendances transitives (correctifs de sécurité)
+    # Minimum versions of transitive dependencies (security fixes)
     "pillow>=12.3",
     "protobuf>=6.31.1",
     "werkzeug>=3.1.6",
 ]
 
 [tool.uv]
-# Projet de scripts (lancés avec `uv run python -m ...`), pas une librairie à distribuer
+# Scripts project (run with `uv run python -m ...`), not a library to distribute
 package = false
-# Python géré par uv plutôt que celui du système : il inclut tkinter, nécessaire à
-# l'affichage matplotlib (display_ship2D), sans rien installer côté système
+# Python managed by uv rather than the system one: it includes tkinter, needed by the
+# matplotlib display (display_ship2D), without installing anything on the system
 python-preference = "only-managed"
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.414",
     "pytest>=9.1.1",
+    "ruff>=0.16.9",
 ]
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, import order, bugbear, pyupgrade
+select = ["E", "W", "F", "I", "B", "UP"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
+exclude = [".venv", "rust-server", "logs", "models"]

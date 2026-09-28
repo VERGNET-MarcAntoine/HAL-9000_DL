@@ -1,11 +1,11 @@
 """
-Enregistre des trajectoires de référence sur le serveur Rust, pour tests/test_physics.py.
+Records reference trajectories on the Rust server, for tests/test_physics.py.
 
-Pour chaque poussée (4 moteurs et aucune), on lit un état du serveur, on maintient la poussée ~2 s, puis on
-lit un second état. Le nombre de ticks écoulés est retrouvé en recalant la simulation Python sur le
-mouvement des planètes (qui ne dépend pas des vaisseaux).
+For each thrust (4 engines and none), a state of the server is read, the thrust is held for ~2 s, then a
+second state is read. The number of elapsed ticks is found by fitting the Python simulation to the motion
+of the planets (which does not depend on the ships).
 
-À relancer si la physique du serveur change, avec le serveur démarré :
+To run again if the physics of the server changes, with the server started:
     uv run python -m hal9000.server
     uv run python -m tests.record_server_trajectories
 """
@@ -59,8 +59,8 @@ def record(engine: str, duration: float = 2.0) -> dict:
         "engine": engine,
         "thrust": ENGINES[engine],
         "ticks": best_ticks,
-        "start": {k: v.tolist() for k, v in zip(["planet_pos", "planet_vel", "ship_pos", "ship_vel"], start_arrays)},
-        "end": {k: v.tolist() for k, v in zip(["planet_pos", "planet_vel", "ship_pos", "ship_vel"], end_arrays)},
+        "start": {k: v.tolist() for k, v in zip(["planet_pos", "planet_vel", "ship_pos", "ship_vel"], start_arrays, strict=True)},
+        "end": {k: v.tolist() for k, v in zip(["planet_pos", "planet_vel", "ship_pos", "ship_vel"], end_arrays, strict=True)},
     }
 
 
@@ -69,4 +69,4 @@ if __name__ == "__main__":
     OUTPUT.write_text(json.dumps(cases, indent=1))
     for case in cases:
         print(f"{case['engine']:5s} : {case['ticks']} ticks")
-    print(f"Enregistré : {OUTPUT}")
+    print(f"Recorded: {OUTPUT}")

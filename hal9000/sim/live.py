@@ -1,24 +1,24 @@
 """
-Diffusion en direct de l'état d'un entraînement sur la simulation Python, pour `display_ship2D --training`.
+Live broadcast of the state of a training on the Python simulation, for `display_ship2D --training`.
 
-L'entraînement envoie régulièrement la position de quelques-uns de ses vaisseaux en UDP sur 127.0.0.1 :
-si aucun affichage n'écoute, les messages sont simplement perdus, sans ralentir l'entraînement.
+The training regularly sends the position of a few of its ships over UDP on 127.0.0.1: if no display is
+listening, the messages are simply lost, without slowing down the training.
 """
 import json
 import socket
 import time
 
 LIVE_ADDRESS = ("127.0.0.1", 47900)
-LIVE_INTERVAL = 0.008  # secondes minimum entre deux messages (~1 message par step d'entraînement)
-LIVE_SHIPS = 4         # nombre de vaisseaux diffusés
+LIVE_INTERVAL = 0.008  # minimum seconds between two messages (~1 message per training step)
+LIVE_SHIPS = 4         # number of ships broadcast
 
 
 class LivePublisher:
     """
-    Envoie l'état des premiers vaisseaux d'un Hal9000SimVecEnv.
+    Sends the state of the first ships of a Hal9000SimVecEnv.
 
     Attributes:
-        name (str): Le nom du run (affiché, et permet de choisir un run parmi plusieurs).
+        name (str): The name of the run (displayed, and used to choose a run among several).
     """
 
     def __init__(self, name: str):
@@ -27,15 +27,15 @@ class LivePublisher:
         self.socket.setblocking(False)
         self.last_sent = 0.0
         self.steps = 0
-        self.episodes = []
+        self.episodes: list[dict] = []
 
     def publish(self, env, finished: list[dict]):
         """
-        Enregistre les épisodes terminés et envoie l'état des vaisseaux, au plus toutes les LIVE_INTERVAL.
+        Records the finished episodes and sends the state of the ships, at most every LIVE_INTERVAL.
 
         Args:
-            env (Hal9000SimVecEnv): L'environnement d'entraînement.
-            finished (list[dict]): Les statistiques des épisodes terminés à ce step.
+            env (Hal9000SimVecEnv): The training environment.
+            finished (list[dict]): The statistics of the episodes finished at this step.
         """
         self.steps += env.num_envs
         self.episodes = (self.episodes + finished)[-200:]
@@ -64,11 +64,11 @@ class LivePublisher:
 
     def publish_server_ships(self, ships: list[dict]):
         """
-        Envoie la cible et le score de vaisseaux pilotés sur le serveur Rust (identifiés par leur uuid),
-        au plus toutes les LIVE_INTERVAL.
+        Sends the target and score of ships flown on the Rust server (identified by their uuid), at most
+        every LIVE_INTERVAL.
 
         Args:
-            ships (list[dict]): Pour chaque vaisseau : uuid, target (indice de la planète), reached.
+            ships (list[dict]): For each ship: uuid, target (index of the planet), reached.
         """
         now = time.perf_counter()
         if now - self.last_sent < LIVE_INTERVAL:

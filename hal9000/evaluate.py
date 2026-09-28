@@ -1,10 +1,10 @@
 """
-Évalue un modèle Hal9000_2D (actions déterministes) : planètes atteintes par épisode, survie, causes de mort.
+Evaluates a Hal9000_2D model (deterministic actions): planets reached per episode, survival, causes of death.
 
-Par défaut, les épisodes tournent sur la simulation Python. Avec --server, ils tournent sur le serveur
-Rust à la vitesse d'entraînement (serveur lancé avec --train). Avec --watch, quelques vaisseaux volent sur
-le serveur Rust à la vitesse de [simulation] (serveur lancé sans --train), pour les regarder avec
-`display_ship2D --server`, qui affiche aussi leurs cibles.
+By default, the episodes run on the Python simulation. With --server, they run on the Rust server at the
+training speed (server started with --train). With --watch, a few ships fly on the Rust server at the
+[simulation] speed (server started without --train), to be watched with `display_ship2D --server`, which
+also shows their targets.
 """
 import argparse
 from dataclasses import replace
@@ -19,17 +19,17 @@ from hal9000.model.core.training import latest_model, make_env
 from hal9000.sim.live import LivePublisher
 
 
-def evaluate(model: PPO, env, episodes: int, publisher=None) -> list[dict]:
+def evaluate(model: PPO, env, episodes: int, publisher: LivePublisher | None = None) -> list[dict]:
     """
-    Fait voler le modèle jusqu'à ce que chaque vaisseau ait terminé le même nombre d'épisodes (au moins
-    `episodes` au total). S'arrêter aux `episodes` premiers épisodes terminés surreprésenterait les morts,
-    qui finissent plus tôt que les épisodes menés à leur terme.
+    Flies the model until every ship has finished the same number of episodes (at least `episodes` in
+    total). Stopping at the first `episodes` finished episodes would over-represent the deaths, which end
+    earlier than the episodes flown to the end.
 
     Returns:
-        list[dict]: Les statistiques de chaque épisode (targets, dead_sun, dead_out, length).
+        list[dict]: The statistics of each episode (targets, dead_sun, dead_out, length).
     """
     per_env = -(-episodes // env.num_envs)
-    results = [[] for _ in range(env.num_envs)]
+    results: list[list[dict]] = [[] for _ in range(env.num_envs)]
     obs = env.reset()
     while min(len(r) for r in results) < per_env:
         action, _ = model.predict(obs, deterministic=True)
@@ -41,9 +41,10 @@ def evaluate(model: PPO, env, episodes: int, publisher=None) -> list[dict]:
                 info = infos[i]
                 results[i].append({**info["hal"], "length": info["episode"]["l"]})
                 if publisher:
-                    print(f"Vaisseau {i + 1}, épisode {len(results[i])} : {info['hal']['targets']} planètes, {info['episode']['l']} steps"
-                          + (", tombé dans le soleil" if info["hal"]["dead_sun"] else "")
-                          + (", perdu dans l'espace" if info["hal"]["dead_out"] else ""))
+                    print(f"Ship {i + 1}, episode {len(results[i])}: {info['hal']['targets']} planets, "
+                          f"{info['episode']['l']} steps"
+                          + (", fell into the sun" if info["hal"]["dead_sun"] else "")
+                          + (", lost in space" if info["hal"]["dead_out"] else ""))
     return [episode for r in results for episode in r]
 
 
@@ -51,27 +52,30 @@ def summary(results: list[dict]) -> str:
     targets = np.array([r["targets"] for r in results])
     dead_sun = np.mean([r["dead_sun"] for r in results])
     dead_out = np.mean([r["dead_out"] for r in results])
-    return (f"{len(results)} épisodes | planètes/épisode : {targets.mean():.2f} (médiane {np.median(targets):.0f}, "
-            f"max {targets.max()}) | survie : {1 - dead_sun - dead_out:.0%} | soleil : {dead_sun:.0%} | perdu : {dead_out:.0%}")
+    return (f"{len(results)} episodes | planets/episode: {targets.mean():.2f} (median {np.median(targets):.0f}, "
+            f"max {targets.max()}) | survival: {1 - dead_sun - dead_out:.0%} | sun: {dead_sun:.0%} | lost: {dead_out:.0%}")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", help="modèle à évaluer (par défaut : le dernier sauvegardé)")
+    parser.add_argument("--model", help="model to evaluate (default: the latest saved one)")
     parser.add_argument("--episodes", type=int, default=100)
-    parser.add_argument("--server", action="store_true", help="évaluer sur le serveur Rust (lancé avec --train)")
-    parser.add_argument("--watch", action="store_true", help="quelques vaisseaux sur le serveur Rust, à la vitesse de [simulation], "
-                        "à regarder avec display_ship2D --server")
-    parser.add_argument("--ships", type=int, default=4, help="avec --watch : nombre de vaisseaux")
-    parser.add_argument("--url", help="adresse du serveur (par défaut : celle de config.toml)")
-    parser.add_argument("--seed", type=int, default=0, help="graine aléatoire (situations de départ)")
-    parser.add_argument("--set", action="append", metavar="SECTION.CLÉ=VALEUR", help="surcharger une valeur de config.toml")
+    parser.add_argument("--server", action="store_true", help="evaluate on the Rust server (started with --train)")
+    parser.add_argument("--watch", action="store_true", help="a few ships on the Rust server, at the [simulation] speed, "
+                        "to watch with display_ship2D --server")
+    parser.add_argument("--ships", type=int, default=4, help="with --watch: number of ships")
+    parser.add_argument("--url", help="address of the server (default: the one of config.toml)")
+    parser.add_argument("--seed", type=int, default=0, help="random seed (starting situations)")
+    parser.add_argument("--set", action="append", metavar="SECTION.KEY=VALUE", help="override a value of config.toml")
     args = parser.parse_args()
 
     torch.set_num_threads(1)
     config = load_config(overrides=args.set)
     if args.url:
         config = replace(config, websocket_url=args.url)
+    model_path = args.model or latest_model()
+    if model_path is None:
+        raise SystemExit("No model in models/: train one with `uv run python -m hal9000.train`.")
     if args.watch:
         env = make_env(config, "server", n_envs=args.ships, seed=args.seed)
     elif args.server:
@@ -79,9 +83,8 @@ def main():
     else:
         env = make_env(config, "sim", n_envs=args.episodes, seed=args.seed)
 
-    model_path = args.model or latest_model()
     model = load_ppo(model_path, env, config, env.num_envs)
-    print(f"Modèle : {model_path}")
+    print(f"Model: {model_path}")
     publisher = LivePublisher("watch") if args.watch else None
     print(summary(evaluate(model, env, args.episodes, publisher)))
     env.close()

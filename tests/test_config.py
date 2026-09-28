@@ -1,4 +1,4 @@
-"""Chargement de config.toml, surcharges et synchronisation des vitesses."""
+"""Loading of config.toml, overrides and synchronization of the speeds."""
 import pytest
 
 from hal9000.config import REAL_TIME_TICK_US, TICKS_PER_SERVER_UPDATE, load_config
@@ -17,14 +17,14 @@ def test_unknown_override_is_rejected():
 
 
 def test_python_and_server_speeds_are_synchronized():
-    """Chaque décision couvre decision_interval simulé, quelle que soit l'accélération."""
+    """Each decision covers decision_interval simulated seconds, whatever the speed."""
     for config in (load_config(), load_config().for_training()):
-        # Un tick = 1/60 s simulée toutes les simulation_sleep_us microsecondes réelles
+        # One tick = 1/60 simulated second every simulation_sleep_us real microseconds
         simulated_seconds_per_real_second = REAL_TIME_TICK_US / config.simulation_sleep_us
         assert config.step_time * simulated_seconds_per_real_second == pytest.approx(config.decision_interval, rel=1e-3)
         assert config.server_sleep_us == TICKS_PER_SERVER_UPDATE * config.simulation_sleep_us
 
 
 def test_decisions_arrive_before_the_server_cuts_the_engines():
-    """Le serveur coupe les moteurs après 15 ticks (0.25 s) sans commande."""
+    """The server cuts the engines after 15 ticks (0.25 s) without a command."""
     assert load_config().decision_interval * 60 < 15

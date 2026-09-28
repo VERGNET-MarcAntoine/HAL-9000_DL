@@ -3,32 +3,33 @@ from stable_baselines3.common.vec_env import VecEnv
 
 from hal9000.config import Config
 from hal9000.model import Hal9000_2D as task
+from hal9000.sim.live import LivePublisher
 from hal9000.sim.solar_system import SolarSystemSim
 
 
 class Hal9000SimVecEnv(VecEnv):
     """
-    n vaisseaux de la tâche Hal9000_2D sur la simulation numpy, sous forme de VecEnv SB3 : tout est
-    vectorisé dans un seul processus, sans serveur ni communication réseau.
+    n ships of the Hal9000_2D task on the numpy simulation, as an SB3 VecEnv: everything is vectorized
+    in a single process, without server or network communication.
     """
 
     def __init__(self, n: int, config: Config, seed: int | None = None, shared_planets: bool = False):
         """
         Args:
-            n (int): Le nombre de vaisseaux.
-            config (Config): La configuration.
-            seed (int, optional): La graine aléatoire.
-            shared_planets (bool): Tous les vaisseaux dans le même système solaire, comme sur le serveur
-                Rust (pour l'affichage). Sinon, chaque vaisseau a son propre système, ce qui diversifie
-                les situations rencontrées à l'entraînement.
+            n (int): The number of ships.
+            config (Config): The configuration.
+            seed (int, optional): The random seed.
+            shared_planets (bool): Every ship in the same solar system, like on the Rust server (for the
+                display). Otherwise, each ship has its own system, which diversifies the situations met
+                during training.
         """
         super().__init__(n, task.observation_space, task.action_space)
         self.shared_planets = shared_planets
-        # Positions (soleil, planètes, vaisseaux) à chaque tick du dernier step, si record_ticks
+        # Positions (sun and planets of the first system, ships) at each tick of the last step, if record_ticks
         self.record_ticks = False
-        self.tick_history = []
-        # Diffusion en direct pour `display_ship2D --training` (voir hal9000/sim/live.py)
-        self.publisher = None
+        self.tick_history: list[tuple[np.ndarray, np.ndarray]] = []
+        # Live broadcast for `display_ship2D --training` (see hal9000/sim/live.py)
+        self.publisher: LivePublisher | None = None
         self.rng = np.random.default_rng(seed)
         self.sim = SolarSystemSim(n, self.rng)
         self.task = task.Hal9000Task(n, self.rng, config.reward)
@@ -45,7 +46,7 @@ class Hal9000SimVecEnv(VecEnv):
         self.sim.reset(idx)
         others = np.setdiff1d(np.arange(self.num_envs), idx)
         if self.shared_planets and len(others):
-            # Les planètes ne dépendent pas des vaisseaux : copiées d'un autre système, elles restent synchronisées
+            # The planets do not depend on the ships: copied from another system, they stay synchronized
             self.sim.planet_pos[idx] = self.sim.planet_pos[others[0]]
             self.sim.planet_vel[idx] = self.sim.planet_vel[others[0]]
         elif self.shared_planets:
@@ -75,7 +76,7 @@ class Hal9000SimVecEnv(VecEnv):
         done = terminated | truncated
         obs = self._observe()
 
-        infos = [{} for _ in range(self.num_envs)]
+        infos: list[dict] = [{} for _ in range(self.num_envs)]
         finished = np.flatnonzero(done)
         for i in finished:
             infos[i] = {
@@ -100,7 +101,7 @@ class Hal9000SimVecEnv(VecEnv):
         return [seed] * self.num_envs
 
     def get_attr(self, attr_name, indices=None):
-        return [getattr(self, attr_name)] * len(self._get_indices(indices))
+        return [getattr(self, attr_name)] * len(list(self._get_indices(indices)))
 
     def set_attr(self, attr_name, value, indices=None):
         setattr(self, attr_name, value)
@@ -109,4 +110,4 @@ class Hal9000SimVecEnv(VecEnv):
         raise NotImplementedError
 
     def env_is_wrapped(self, wrapper_class, indices=None):
-        return [False] * len(self._get_indices(indices))
+        return [False] * len(list(self._get_indices(indices)))

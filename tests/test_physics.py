@@ -1,18 +1,18 @@
-"""La simulation Python doit reproduire exactement la physique du serveur Rust."""
+"""The Python simulation must reproduce exactly the physics of the Rust server."""
 import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from hal9000.sim.solar_system import G, MASSES, SolarSystemSim
+from hal9000.sim.solar_system import MASSES, G, SolarSystemSim
 
 CASES = json.loads((Path(__file__).parent / "data" / "server_trajectories.json").read_text())
 
 
 @pytest.mark.parametrize("case", CASES, ids=[case["engine"] for case in CASES])
 def test_matches_rust_server(case):
-    """Trajectoires enregistrées sur le serveur (tests/record_server_trajectories.py), ~10 s simulées."""
+    """Trajectories recorded on the server (tests/record_server_trajectories.py), ~10 simulated seconds."""
     sim = SolarSystemSim(1, np.random.default_rng(0))
     start = {k: np.array(v) for k, v in case["start"].items()}
     sim.load(0, start["planet_pos"], start["planet_vel"], start["ship_pos"], start["ship_vel"])
@@ -26,16 +26,16 @@ def test_matches_rust_server(case):
 
 
 def test_planets_stay_on_circular_orbits():
-    """Les planètes démarrent sur des orbites circulaires et y restent (pas de dérive numérique)."""
+    """The planets start on circular orbits and stay on them (no numerical drift)."""
     sim = SolarSystemSim(3, np.random.default_rng(1))
     radius = np.linalg.norm(sim.planet_pos[:, 1:], axis=-1)
-    for _ in range(60 * 60):  # une minute simulée
+    for _ in range(60 * 60):  # one simulated minute
         sim.tick(np.zeros((3, 2)))
     np.testing.assert_allclose(np.linalg.norm(sim.planet_pos[:, 1:], axis=-1), radius, rtol=1e-3)
 
 
 def test_ship_falls_toward_the_sun_without_thrust():
-    """Immobile à son point d'apparition, le vaisseau tombe vers le soleil avec l'accélération GM / r²."""
+    """Motionless at its spawn point, the ship falls toward the sun with the acceleration GM / r²."""
     sim = SolarSystemSim(1, np.random.default_rng(2))
     r = np.linalg.norm(sim.ship_pos[0])
     sim.tick(np.zeros((1, 2)))

@@ -5,10 +5,10 @@ rust-server/
 
 logs/
 models/*
-# Le modèle final est versionné pour pouvoir être utilisé dès le clonage
+# The final model is versioned so that it can be used right after cloning
 !models/Hal9000_2D_final.zip
 # Cache files
 __pycache__/
 *.pyc
-# Outils locaux
+# Local tools
 .serena/

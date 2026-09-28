@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
-from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv, VecMonitor
 
 from hal9000.config import Config
@@ -21,30 +20,30 @@ from hal9000.websocket.websocket_client import SpaceshipWebSocketClient
 LOG_DIR = "logs"
 MODELS_DIR = "models"
 MODEL_NAME = "Hal9000_2D"
-# Écart toléré entre l'accélération mesurée du serveur et celle de la config
+# Accepted gap between the measured speed of the server and the speed of the configuration
 SPEEDUP_TOLERANCE = 0.2
-# Le réseau est trop petit pour profiter du GPU : sur CPU avec un seul thread, chaque step
-# et chaque mise à jour PPO sont ~4x plus rapides (moins de latence, donc une synchro tenable)
+# The network is too small to benefit from the GPU: on CPU with a single thread, each step and each
+# PPO update are ~4x faster (less latency, hence a synchronization that holds)
 DEVICE = "cpu"
 
 
 def _orbit_angle(state: dict) -> tuple[float, float]:
-    """Angle et vitesse angulaire de la planète la plus lointaine autour du soleil."""
+    """Angle and angular speed of the farthest planet around the sun."""
     position = np.array(state["planets"][-1][1][:2]) - np.array(state["planets"][0][1][:2])
     speed = np.array(state["planet_speeds"][-1][1][:2])
-    return np.arctan2(position[1], position[0]), np.linalg.norm(speed) / np.linalg.norm(position)
+    return float(np.arctan2(position[1], position[0])), float(np.linalg.norm(speed) / np.linalg.norm(position))
 
 
 def measure_server_speedup(config: Config, duration: float = 2.0) -> float:
     """
-    Mesure l'accélération réelle du serveur à partir du mouvement orbital d'une planète.
+    Measures the actual speed of the server from the orbital motion of a planet.
 
     Args:
-        config (Config): La configuration (pour l'URL du serveur).
-        duration (float): La durée de la mesure, en secondes réelles.
+        config (Config): The configuration (for the URL of the server).
+        duration (float): The duration of the measurement, in real seconds.
 
     Returns:
-        float: Le nombre de secondes simulées par seconde réelle.
+        float: The number of simulated seconds per real second.
     """
     client = SpaceshipWebSocketClient(config.websocket_url)
     client.connect()
@@ -61,33 +60,37 @@ def measure_server_speedup(config: Config, duration: float = 2.0) -> float:
 
 def server_config(config: Config) -> Config:
     """
-    Vérifie que le serveur tourne à la vitesse attendue et retourne la configuration cadencée sur
-    sa vitesse mesurée (le serveur n'atteint jamais tout à fait la vitesse demandée).
+    Checks that the server runs at the expected speed and returns the configuration paced on its
+    measured speed (the server never quite reaches the requested speed).
     """
     measured_speedup = measure_server_speedup(config)
     if abs(measured_speedup / config.speedup - 1) > SPEEDUP_TOLERANCE:
         raise SystemExit(
-            f"Le serveur tourne à x{measured_speedup:.0f} alors que x{config.speedup:g} est attendu.\n"
-            "Lancez-le avec : uv run python -m hal9000.server" + (" --train" if config.speedup > 1 else ""))
-    print(f"Serveur à x{measured_speedup:.1f}")
+            f"The server runs at x{measured_speedup:.0f} while x{config.speedup:g} is expected.\n"
+            "Start it with: uv run python -m hal9000.server" + (" --train" if config.speedup > 1 else ""))
+    print(f"Server at x{measured_speedup:.1f}")
     return replace(config, speedup=measured_speedup)
 
 
-def make_env(config: Config, backend: str, n_envs: int | None = None, seed: int | None = None) -> VecEnv:
+def make_env(config: Config, backend: str, n_envs: int | None = None, seed: int | None = None,
+             publisher: LivePublisher | None = None) -> VecEnv:
     """
-    Crée les vaisseaux d'entraînement ou d'évaluation.
+    Creates the training or evaluation ships.
 
     Args:
-        config (Config): La configuration (à la vitesse voulue pour le serveur).
-        backend (str): "sim" (simulation numpy) ou "server" (serveur Rust).
-        n_envs (int, optional): Le nombre de vaisseaux (par défaut, celui de la config pour ce backend).
-        seed (int, optional): La graine aléatoire.
+        config (Config): The configuration (at the desired speed for the server).
+        backend (str): "sim" (numpy simulation) or "server" (Rust server).
+        n_envs (int, optional): The number of ships (default: the one of the configuration for this backend).
+        seed (int, optional): The random seed.
+        publisher (LivePublisher, optional): Live broadcast of the ships (simulation only).
 
     Returns:
-        VecEnv: Les environnements, avec les statistiques d'épisode (VecMonitor).
+        VecEnv: The environments, with the episode statistics (VecMonitor).
     """
     if backend == "sim":
-        return VecMonitor(Hal9000SimVecEnv(n_envs or config.sim_envs, config, seed))
+        sim_env = Hal9000SimVecEnv(n_envs or config.sim_envs, config, seed)
+        sim_env.publisher = publisher
+        return VecMonitor(sim_env)
     config = server_config(config)
     n_envs = n_envs or config.n_envs
     vec_env_class = DummyVecEnv if n_envs == 1 else SubprocVecEnv
@@ -97,7 +100,7 @@ def make_env(config: Config, backend: str, n_envs: int | None = None, seed: int 
 
 
 def ppo_kwargs(config: Config, n_envs: int) -> dict:
-    """Hyperparamètres PPO de la configuration, avec un rollout de même taille quel que soit n_envs."""
+    """PPO hyperparameters of the configuration, with rollouts of the same size whatever n_envs."""
     kwargs = dict(config.ppo)
     rollout_size = kwargs.pop("rollout_size")
     net_arch = kwargs.pop("net_arch")
@@ -105,16 +108,20 @@ def ppo_kwargs(config: Config, n_envs: int) -> dict:
 
 
 def latest_model(name: str = MODEL_NAME) -> str | None:
-    """Le dernier modèle sauvegardé sous ce nom, ou None."""
+    """The latest model saved under this name, or None."""
     models = glob.glob(os.path.join(MODELS_DIR, f"{name}_*.zip"))
     return max(models, key=os.path.getmtime) if models else None
 
 
 class HalMetrics(BaseCallback):
     """
-    Enregistre dans TensorBoard ce qui compte vraiment, indépendamment de la forme de la récompense :
-    planètes atteintes par épisode, taux de survie et causes de mort.
+    Records in TensorBoard what really matters, whatever the shape of the reward: planets reached per
+    episode, survival rate and causes of death.
     """
+
+    def __init__(self):
+        super().__init__()
+        self.episodes: list[dict] = []
 
     def _on_rollout_start(self):
         self.episodes = []
@@ -139,42 +146,40 @@ class HalMetrics(BaseCallback):
 def train(config: Config, backend: str, timesteps: int, new: bool = False, model_path: str | None = None,
           name: str = MODEL_NAME):
     """
-    Entraîne Hal9000_2D, en reprenant le dernier modèle sauvegardé sauf si new est vrai.
+    Trains Hal9000_2D, resuming the latest saved model unless new is true.
 
     Args:
-        config (Config): La configuration.
-        backend (str): "sim" (simulation numpy) ou "server" (serveur Rust, lancé avec --train).
-        timesteps (int): Le nombre de steps à entraîner.
-        new (bool): Repartir d'un modèle neuf.
-        model_path (str, optional): Le modèle à reprendre (par défaut, le dernier sauvegardé sous ce nom).
-        name (str): Le nom du modèle (préfixe des sauvegardes et des courbes TensorBoard).
+        config (Config): The configuration.
+        backend (str): "sim" (numpy simulation) or "server" (Rust server, started with --train).
+        timesteps (int): The number of steps to train.
+        new (bool): Start from a new model.
+        model_path (str, optional): The model to resume (default: the latest saved under this name).
+        name (str): The name of the model (prefix of the checkpoints and of the TensorBoard curves).
     """
     torch.set_num_threads(1)
     if backend == "server":
         config = config.for_training()
     n_envs = config.sim_envs if backend == "sim" else config.n_envs
-    env = make_env(config, backend)
-    if backend == "sim":
-        # Visible en direct avec `display_ship2D --training`
-        env.venv.publisher = LivePublisher(name)
-    print(f"{n_envs} vaisseaux en parallèle ({backend})")
+    # On the simulation, the training can be watched live with `display_ship2D --training`
+    env = make_env(config, backend, publisher=LivePublisher(name) if backend == "sim" else None)
+    print(f"{n_envs} ships in parallel ({backend})")
 
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(MODELS_DIR, exist_ok=True)
     model_path = None if new else (model_path or latest_model(name))
     if model_path:
         model = load_ppo(model_path, env, config, n_envs, device=DEVICE)
-        print(f"Modèle repris : {model_path} ({model.num_timesteps} steps)")
+        print(f"Model resumed: {model_path} ({model.num_timesteps} steps)")
     else:
         model = PPO("MlpPolicy", env, tensorboard_log=LOG_DIR, device=DEVICE, **ppo_kwargs(config, n_envs))
-        print("Nouveau modèle créé.")
+        print("New model created.")
 
     name = f"{name}_{backend}"
     checkpoint = CheckpointCallback(save_freq=max(1, config.save_every // n_envs), save_path=MODELS_DIR, name_prefix=name)
-    # Un nouveau modèle a son propre dossier de logs ; une reprise continue les courbes du dossier précédent
+    # A new model gets its own log directory; a resumed one continues the curves of the previous directory
     model.learn(total_timesteps=timesteps, callback=[HalMetrics(), checkpoint],
                 tb_log_name=name, reset_num_timesteps=model_path is None)
     final_path = os.path.join(MODELS_DIR, f"{name}_{model.num_timesteps}_steps.zip")
     model.save(final_path)
-    print(f"Modèle sauvegardé : {final_path}")
+    print(f"Model saved: {final_path}")
     env.close()

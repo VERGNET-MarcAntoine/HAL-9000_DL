@@ -5,30 +5,30 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "config.toml"
 
-# Le serveur Rust avance la simulation de 1/60 s par tick
+# The Rust server advances the simulation by 1/60 s per tick
 REAL_TIME_TICK_US = 1_000_000 / 60
-# Le serveur envoie l'état tous les N ticks de simulation
+# The server sends the state every N simulation ticks
 TICKS_PER_SERVER_UPDATE = 4
 
 
 @dataclass(frozen=True)
 class Config:
     """
-    Configuration de HAL-9000, lue depuis config.toml.
+    Configuration of HAL-9000, read from config.toml.
 
     Attributes:
-        speedup (float): L'accélération de la simulation par rapport au temps réel.
-        training_speedup (float): L'accélération de la simulation pendant l'entraînement.
-        n_envs (int): Le nombre de vaisseaux entraînés en parallèle.
-        decision_interval (float): Le temps simulé entre deux décisions de l'IA, en secondes.
-        websocket_url (str): L'URL du serveur WebSocket.
-        server_path (Path): Le dossier du serveur Rust.
-        sim_envs (int): Le nombre de vaisseaux simulés en parallèle sur la simulation numpy.
-        episode_time (int): La durée maximale d'un épisode, en minutes simulées.
-        total_timesteps (int): Le nombre total de steps d'entraînement.
-        save_every (int): La fréquence de sauvegarde du modèle, en steps.
-        reward (dict): Les paramètres de la récompense (section [reward]).
-        ppo (dict): Les hyperparamètres PPO (section [ppo]).
+        speedup (float): The speed of the simulation compared to real time.
+        training_speedup (float): The speed of the simulation during a training on the Rust server.
+        n_envs (int): The number of ships trained in parallel on the Rust server.
+        decision_interval (float): The simulated time between two decisions of the AI, in seconds.
+        websocket_url (str): The URL of the WebSocket server.
+        server_path (Path): The directory of the Rust server.
+        sim_envs (int): The number of ships simulated in parallel on the numpy simulation.
+        episode_time (int): The maximum duration of an episode, in simulated minutes.
+        total_timesteps (int): The total number of training steps.
+        save_every (int): The checkpoint frequency, in steps.
+        reward (dict): The reward parameters ([reward] section).
+        ppo (dict): The PPO hyperparameters ([ppo] section).
     """
     speedup: float
     training_speedup: float
@@ -44,40 +44,40 @@ class Config:
     ppo: dict
 
     def for_training(self) -> "Config":
-        """Retourne la configuration avec l'accélération d'entraînement."""
+        """Returns the configuration with the training speed."""
         return replace(self, speedup=self.training_speedup)
 
     @property
     def step_time(self) -> float:
-        """Temps réel entre deux steps Python, en secondes."""
+        """Real time between two Python steps, in seconds."""
         return self.decision_interval / self.speedup
 
     @property
     def steps_per_episode(self) -> int:
-        """Nombre maximal de steps par épisode."""
+        """Maximum number of steps per episode."""
         return round(self.episode_time * 60 / self.decision_interval)
 
     @property
     def simulation_sleep_us(self) -> int:
-        """Pause entre deux ticks du serveur Rust (SIMULATION_SLEEP_TIME_MICROSECONDS)."""
+        """Pause between two ticks of the Rust server (SIMULATION_SLEEP_TIME_MICROSECONDS)."""
         return round(REAL_TIME_TICK_US / self.speedup)
 
     @property
     def server_sleep_us(self) -> int:
-        """Pause entre deux envois d'état du serveur Rust (SERVER_SLEEP_TIME_MICROSECONDS)."""
+        """Pause between two state messages of the Rust server (SERVER_SLEEP_TIME_MICROSECONDS)."""
         return TICKS_PER_SERVER_UPDATE * self.simulation_sleep_us
 
 
 def load_config(path: Path = CONFIG_PATH, overrides: list[str] | None = None) -> Config:
     """
-    Charge la configuration depuis un fichier TOML.
+    Loads the configuration from a TOML file.
 
     Args:
-        path (Path): Le chemin du fichier de configuration.
-        overrides (list[str], optional): Des surcharges "section.clé=valeur" (valeur en syntaxe TOML).
+        path (Path): The path of the configuration file.
+        overrides (list[str], optional): Overrides "section.key=value" (value in TOML syntax).
 
     Returns:
-        Config: La configuration.
+        Config: The configuration.
     """
     with open(path, "rb") as f:
         data = tomllib.load(f)
@@ -85,7 +85,7 @@ def load_config(path: Path = CONFIG_PATH, overrides: list[str] | None = None) ->
         key, _, value = override.partition("=")
         section, _, name = key.partition(".")
         if section not in data or name not in data[section]:
-            raise ValueError(f"Surcharge inconnue : {key}")
+            raise ValueError(f"Unknown override: {key}")
         data[section][name] = tomllib.loads(f"v = {value}")["v"]
 
     config = Config(
@@ -103,5 +103,5 @@ def load_config(path: Path = CONFIG_PATH, overrides: list[str] | None = None) ->
         ppo=dict(data["ppo"]),
     )
     if min(config.speedup, config.training_speedup, config.decision_interval, config.n_envs) <= 0:
-        raise ValueError(f"{path}: speedup, decision_interval et n_envs doivent être positifs")
+        raise ValueError(f"{path}: speedup, decision_interval and n_envs must be positive")
     return config
