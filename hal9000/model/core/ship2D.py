@@ -1,12 +1,17 @@
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+from hal9000.config import Config, load_config
 from hal9000.websocket.websocket_client import SpaceshipWebSocketClient
-import os
 
 import time
-from dotenv import load_dotenv
 from stable_baselines3.common.env_checker import check_env
+
+# Un step est en retard s'il dépasse step_time de plus de 10 %
+OVERRUN_TOLERANCE = 1.1
+# Fréquence (en steps) de la vérification du retard, et part de steps en retard tolérée
+OVERRUN_CHECK_STEPS = 1000
+OVERRUN_MAX_RATIO = 0.2
 
 
 class Ship2D(gym.Env):
@@ -19,7 +24,8 @@ class Ship2D(gym.Env):
     Attributes:
         ws (str): L'URL du serveur WebSocket.
         max_step (int): Le nombre maximal d'étapes par épisode.
-        step_time (float): Le temps d'attente entre chaque étape en secondes.
+        config (Config): La configuration (voir config.toml).
+        step_time (float): Le temps réel entre chaque étape en secondes.
         client (SpaceshipWebSocketClient): Le client WebSocket pour la communication avec le serveur.
         nb_planets (int): Le nombre de planètes dans l'environnement.
         ship_data (np.ndarray): Les données du vaisseau (position, vitesse).
@@ -33,22 +39,22 @@ class Ship2D(gym.Env):
         state (dict): L'état actuel de l'environnement.
     """
 
-    def __init__(self, episode_time: int, step_time: float, websocket_url: str = "ws://127.0.0.1:3012"):
+    def __init__(self, config: Config | None = None):
         """
         Initialise l'environnement Ship2D.
 
         Args:
-            episode_time (int): La durée de l'épisode en minutes.
-            step_time (float): Le temps d'attente entre chaque étape en secondes.
-            websocket_url (str): L'URL du serveur WebSocket.
+            config (Config, optional): La configuration (par défaut, celle de config.toml).
         """
         super().__init__()
 
-        self.ws = websocket_url
+        self.config = config or load_config()
+        self.ws = self.config.websocket_url
 
-        # On veut 4 frame par seconde et le temps episode est en minute
-        self.max_step = episode_time*60*4
-        self.step_time = step_time
+        self.max_step = self.config.steps_per_episode
+        self.step_time = self.config.step_time
+        self.total_steps = 0
+        self.overrun_steps = 0
         # Client WebSocket pour communiquer avec le serveur pour recuperer le nombre de planet
         self.client = SpaceshipWebSocketClient(self.ws)
         self.client.connect()
@@ -181,11 +187,9 @@ class Ship2D(gym.Env):
         self.client = SpaceshipWebSocketClient(self.ws)
         self.client.connect()
 
-        time.sleep(0.01)
-
         # Initialisation du parcours du vaisseau
-        self.target_ids = np.random.choice(
-            np.arange(1, self.nb_planets), size=self.nb_planets - 1, replace=False)
+        # (self.np_random est initialisé par super().reset(seed=seed) pour que le seed soit respecté)
+        self.target_ids = self.np_random.permutation(np.arange(1, self.nb_planets))
 
         # Initialisation variable a chaque rest
         self.current_target = 0
@@ -193,6 +197,7 @@ class Ship2D(gym.Env):
         self.score = 0
 
         self.state = self.client.get_state()
+        self.last_step_time = time.perf_counter()
         observation = self.get_observation(self.state)
         info = {}
         return observation, info
@@ -226,21 +231,44 @@ class Ship2D(gym.Env):
 
         # Gestion du nombre de step et stop quand max_step atteint
         self.current_step += 1
-        if self.current_step > self.max_step:
+        if self.current_step >= self.max_step:
             truncated = True
 
         engine_command, rotation_command = self.action_to_command(action)
         self.client.send_command(engine_command, rotation_command)
-        time.sleep(self.step_time)
+        # On attend jusqu'à step_time après le step précédent (et non step_time après ce point) :
+        # le temps de calcul Python est absorbé et chaque step dure bien decision_interval simulé
+        elapsed = time.perf_counter() - self.last_step_time
+        time.sleep(max(0.0, self.step_time - elapsed))
+        self.check_overrun(elapsed)
 
         previous_state = self.state
         self.state = self.client.get_state()
+        self.last_step_time = time.perf_counter()
 
         reward, terminated = self.get_reward(previous_state)
 
         observation = self.get_observation(self.state)
         info = {}
         return observation, reward, terminated, truncated, info
+
+    def check_overrun(self, elapsed: float):
+        """
+        Signale quand Python n'arrive pas à tenir le rythme demandé : les steps durent alors plus
+        que decision_interval simulé et l'entraînement n'est plus synchronisé avec la simulation.
+
+        Args:
+            elapsed (float): Le temps réel écoulé depuis le step précédent, en secondes.
+        """
+        self.total_steps += 1
+        if elapsed > self.step_time * OVERRUN_TOLERANCE:
+            self.overrun_steps += 1
+        if self.total_steps % OVERRUN_CHECK_STEPS == 0:
+            ratio = self.overrun_steps / OVERRUN_CHECK_STEPS
+            if ratio > OVERRUN_MAX_RATIO:
+                print(f"Attention : {ratio:.0%} des steps dépassent {self.step_time * 1000:.1f} ms, "
+                      "Python ne suit pas la simulation. Baissez [training] speedup ou n_envs dans config.toml.")
+            self.overrun_steps = 0
 
     def close(self):
         """
@@ -252,9 +280,5 @@ class Ship2D(gym.Env):
 
 
 if __name__ == "__main__":
-    load_dotenv()
-    step_time = float(os.getenv("SLEEP_TIME"))
-    episode_time = int(os.getenv("EPISODE_TIME"))
-
-    env = Ship2D(episode_time, step_time)
+    env = Ship2D()
     check_env(env)

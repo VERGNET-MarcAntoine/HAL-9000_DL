@@ -1,11 +1,8 @@
 import numpy as np
 from hal9000.model.core.ship2D import Ship2D
-from dotenv import load_dotenv
-from stable_baselines3.common.env_checker import check_env
-from stable_baselines3 import PPO
-from datetime import datetime
-
-import os
+from hal9000.model.core.training import train
+from hal9000.config import Config
+from pathlib import Path
 
 
 class Hal9000_2D_V0(Ship2D):
@@ -13,11 +10,11 @@ class Hal9000_2D_V0(Ship2D):
     A custom environment that inherits from Ship2D and defines a specific reward function.
     """
 
-    def __init__(self, episode_time: int, step_time: float, websocket_url: str = "ws://127.0.0.1:3012"):
+    def __init__(self, config: Config | None = None):
         """
         Initializes the MyShipEnv.
         """
-        super().__init__(episode_time, step_time, websocket_url)
+        super().__init__(config)
         # You can add any specific initialization code here if needed
         self.previous_distance_to_target = None  # To track progress towards the target
 
@@ -72,7 +69,7 @@ class Hal9000_2D_V0(Ship2D):
             reward += 1000
             self.current_target += 1
             print(f"Score : {self.current_target}")
-            if self.current_target == self.nb_planets:
+            if self.current_target >= len(self.target_ids):
                 self.current_target = 0
 
         # Récompense basée sur l'accélération (direction vers la cible)
@@ -80,7 +77,7 @@ class Hal9000_2D_V0(Ship2D):
 
         direction_to_target = target_data[0:2] - ship_data[0:2]
         # Normalisation
-        direction_to_target /= np.linalg.norm(direction_to_target)
+        direction_to_target /= max(np.linalg.norm(direction_to_target), 1e-8)
         alignment_reward = np.dot(acceleration, direction_to_target)
         # Modulation de la récompense d'alignement selon la distance
         # Diminue l'importance en se rapprochant
@@ -100,69 +97,4 @@ class Hal9000_2D_V0(Ship2D):
 
 
 if __name__ == "__main__":
-    load_dotenv()
-    episode_time = int(os.getenv("EPISODE_TIME"))
-    step_time = float(os.getenv("SLEEP_TIME"))
-    number_episode = int(os.getenv("NUMBER_EPISODE"))
-    save_number = int(os.getenv("SAVE_NUMBER"))
-
-    hal9000 = Hal9000_2D_V0(episode_time, step_time)
-    check_env(hal9000)
-    logdir = "logs"
-    models_dir = "models"
-
-    # Créer le dossier des logs et des modèles s'ils n'existent pas
-    os.makedirs(logdir, exist_ok=True)
-    os.makedirs(models_dir, exist_ok=True)
-
-    model_name = __file__.split(
-        "\\")[-1].split("/")[-1].split(".")[0]  # Nom du modèle
-    print(model_name)
-    existing_models = [f for f in os.listdir(
-        models_dir) if f.startswith(model_name) and f.endswith(".zip")]
-
-    if existing_models:
-        def extract_timestep(filename):
-            try:
-                return int(filename.split("_step")[1].split(".zip")[0])
-            except (IndexError, ValueError):
-                return 0
-
-        existing_models.sort(key=extract_timestep)
-
-        latest_model_path = os.path.join(models_dir, existing_models[-1])
-        model = PPO.load(latest_model_path, env=hal9000)
-        print(f"Modèle existant chargé : {latest_model_path}")
-        loaded_timesteps = extract_timestep(existing_models[-1])
-    else:
-        model = PPO("MultiInputPolicy", hal9000, tensorboard_log=logdir)
-        print("Nouveau modèle créé.")
-        loaded_timesteps = 0
-
-    start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    log_name = f"{model_name}_{start_time}"  # Format des logs
-
-    # Calculer le nombre de timesteps par épisode
-    timesteps_per_episode = episode_time * 60 * 4
-
-    # Calculer le nombre de timesteps pour SAVE_NUMBER épisodes
-    timesteps_for_save = timesteps_per_episode * save_number
-
-    # Calculer le nombre total de timesteps à entraîner
-    total_train_timesteps = number_episode * timesteps_per_episode
-
-    # Entraîner et sauvegarder tous les SAVE_NUMBER épisodes
-    current_timesteps = loaded_timesteps
-    while current_timesteps < total_train_timesteps:
-        # Entraîner pour SAVE_NUMBER épisodes
-        model.learn(total_timesteps=timesteps_for_save,
-                    reset_num_timesteps=False, tb_log_name=log_name)
-
-        current_timesteps += timesteps_for_save
-        new_model_path = os.path.join(
-            models_dir, f"{log_name}_step{current_timesteps}.zip")
-
-        print(new_model_path)
-        model.save(new_model_path)
-
-    hal9000.close()
+    train(Hal9000_2D_V0, Path(__file__).stem)

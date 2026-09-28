@@ -1,0 +1,38 @@
+# Configuration de HAL-9000
+#
+# La vitesse du serveur Rust et le rythme de l'environnement Python sont tous les deux
+# calculés à partir de `speedup` et `decision_interval` : ils restent synchronisés quelle
+# que soit l'accélération choisie.
+
+[simulation]
+# Accélération de la simulation par rapport au temps réel pour regarder un modèle voler
+# (serveur lancé avec `uv run python -m hal9000.server`). 1 = temps réel.
+speedup = 1
+
+# Temps simulé entre deux décisions de l'IA, en secondes.
+# Doit être le même à l'entraînement et au replay d'un modèle.
+# 0.25 est la valeur prévue ; MAGB_V0 a en pratique été entraîné à ~0.13
+# (SLEEP_TIME et vitesse du serveur n'étaient pas synchronisés).
+decision_interval = 0.25
+
+[server]
+websocket_url = "ws://127.0.0.1:3012"
+# Dossier du serveur Rust (branche deep_learning), relatif à la racine du projet
+path = "rust-server"
+
+[training]
+# Accélération pendant l'entraînement (serveur lancé avec `uv run python -m hal9000.server --train`)
+# et nombre de vaisseaux entraînés en parallèle sur le même serveur.
+# Plus c'est rapide, plus il y a de steps en retard (qui durent plus que decision_interval) :
+#   x25, 4 vaisseaux : 335 steps/s,  3 % de steps en retard
+#   x25, 6 vaisseaux : 514 steps/s,  7 %
+#   x40, 4 vaisseaux : 434 steps/s, 17 %
+# L'entraînement affiche un avertissement si Python ne suit plus.
+speedup = 25
+n_envs = 6
+# Durée maximale d'un épisode, en minutes simulées
+episode_time = 15
+# Nombre total d'épisodes d'entraînement
+number_episode = 15000
+# Sauvegarde du modèle tous les N épisodes
+save_number = 100

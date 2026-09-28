@@ -6,8 +6,7 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 import time
 
-websocket_url = "ws://127.0.0.1:3012"
-client = SpaceshipWebSocketClient(websocket_url)
+client = SpaceshipWebSocketClient()
 client.connect()
 
 
@@ -51,9 +50,9 @@ def update(frame):
     else:
         sun_scatter.set_offsets(np.empty((0, 2)))
 
-    return ships_scatter, planets_scatter
+    return ships_scatter, planets_scatter, sun_scatter
 
 
 # Animation
-ani = FuncAnimation(fig, update, interval=33)  # Mise à jour toutes les 100ms
+ani = FuncAnimation(fig, update, interval=33, cache_frame_data=False)  # Mise à jour toutes les ~33ms
 plt.show()

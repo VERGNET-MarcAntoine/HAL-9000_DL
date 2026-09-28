@@ -4,22 +4,26 @@ from typing import Dict
 import json
 import threading
 import random
+from hal9000.config import load_config
+
 
 class SpaceshipWebSocketClient:
     """Client WebSocket pour interagir avec le serveur de simulation du système solaire."""
     
-    def __init__(self, websocket_url: str = "ws://127.0.0.1:3012"):
+    def __init__(self, websocket_url: str | None = None):
         """
         Initialise le client WebSocket.
         
         Args:
-            websocket_url: URL du serveur WebSocket
+            websocket_url: URL du serveur WebSocket (par défaut, celle de config.toml)
         """
-        self.websocket_url = websocket_url
+        self.websocket_url = websocket_url or load_config().websocket_url
         self.ws = None
         self.connected = False
         self.latest_data = None
         self.ship_uuid = None
+        # Levé à la réception du premier état : connect() rend la main dès ce moment
+        self.first_data = threading.Event()
     
     def connect(self):
         """Établit la connexion WebSocket avec le serveur."""
@@ -41,15 +45,18 @@ class SpaceshipWebSocketClient:
             # Attendre que la connexion soit établie et qu'on reçoive les premières données
             timeout = 10
             start_time = time.time()
-            while not self.connected or self.latest_data is None:
+            while not self.first_data.wait(0.01):
+                # run_forever rend la main dès que la connexion échoue (serveur absent, URL invalide...)
+                if not self.ws_thread.is_alive():
+                    raise ConnectionError(f"Impossible de se connecter au serveur WebSocket {self.websocket_url}")
                 if time.time() - start_time > timeout:
                     raise TimeoutError("Impossible de se connecter au serveur WebSocket")
-                time.sleep(0.1)
     
     def disconnect(self):
         """Ferme la connexion WebSocket."""
         if self.connected and self.ws:
             self.ws.close()
+            self.ws_thread.join(timeout=1)
             self.connected = False
     
     def get_state(self) -> Dict:
@@ -87,6 +94,7 @@ class SpaceshipWebSocketClient:
         """Callback lors de la réception d'un message."""
         data = json.loads(message)
         self.latest_data = data
+        self.first_data.set()
         
         # Récupérer l'UUID du vaisseau s'il n'est pas encore défini
         if self.ship_uuid is None and "ship" in data:

@@ -1,15 +1,9 @@
 import os
-import torch
 from hal9000.model.Hal9000_2D_MAGB_V1 import Hal9000_2D_V0
-from hal9000.ship import Ship
-from stable_baselines3 import PPO
-from dotenv import load_dotenv
+from hal9000.model.core.loading import load_ppo
+from hal9000.config import load_config
 
 
-load_dotenv()
-
-episode_time = int(os.getenv("EPISODE_TIME"))
-step_time = float(os.getenv("SLEEP_TIME"))
 model = "Hal9000_2D_MAGB_V1_2025_03_31_05_52_02_step3294000"
 
 
@@ -19,10 +13,10 @@ model_path = os.path.join(models_dir, model)
 
 # Initialiser l'environnement
 # Assurez-vous que l'environnement peut afficher les résultats
-env = Hal9000_2D_V0(episode_time, step_time)
+env = Hal9000_2D_V0(load_config())
 
 # Charger le modèle entraîné
-model = PPO.load(model_path, env=env)
+model = load_ppo(model_path, env)
 print(f"load model {model_path}")
 
 episodes = 10  # Nombre d'épisodes à tester
@@ -31,7 +25,6 @@ for episode in range(episodes):
     obs, info = env.reset()
     done = False
     total_reward = 0
-    count = 0
     while not done:
         action, _states = model.predict(obs, deterministic=True)
 
