@@ -7,7 +7,7 @@ HAL-9000 is a collection of AI autopilots trained using reinforcement learning f
 
 Ensure you have the following dependencies installed. While other versions might work, they have not been tested:
 
-* **Python:** 3.13.2
+* **[uv](https://docs.astral.sh/uv/):** manages Python and the dependencies (installs Python 3.13 automatically if needed)
 * **npm:** 11.1.0
 * **Cargo (Rust):** 1.85.0
 
@@ -19,71 +19,62 @@ Follow these steps to set up the environment and run the HAL-9000 agents.
 
 This sets up the environment for the AI training and execution scripts.
 
-**Create and activate a virtual environment:**
+**Create the virtual environment and install dependencies:**
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-# On Windows use: .venv\Scripts\activate
+uv sync
 ```
 
-**Install Python dependencies:**
+This creates a `.venv` in the project directory from the locked versions in `uv.lock` — nothing is installed in your global Python. Every command below is prefixed with `uv run`, so there is no need to activate the environment.
 
-```bash
-pip install -r requirements.txt
+To update the dependencies later: `uv lock --upgrade && uv sync`.
+
+**Configuration:**
+
+All settings live in `config.toml` at the root of the project:
+
+```toml
+[simulation]
+speedup = 1               # 1 = real time (to watch a model), e.g. 25 to train faster
+decision_interval = 0.25  # simulated seconds between two decisions of the AI
+
+[server]
+websocket_url = "ws://127.0.0.1:3012"
+path = "rust-server"
+
+[training]
+episode_time = 15         # maximum episode duration, in simulated minutes
+number_episode = 15000    # total number of training episodes
+save_number = 100         # save the model every N episodes
 ```
 
-**Configure environment variables:**
+**Simulation speed and synchronization:** the Rust server advances the simulation by a fixed 1/60 s tick, so it can be accelerated without changing the physics. The Python environment must follow the same acceleration, otherwise each step covers more or less simulated time than during training and a model behaves differently when replayed. Both sides are therefore derived from `speedup`:
 
-Create a file named `.env` in the root directory of the HAL-9000 project and add the following variables:
+* Python waits `decision_interval / speedup` seconds of real time between two steps.
+* The server is launched with `SIMULATION_SLEEP_TIME_MICROSECONDS = 16667 / speedup` and `SERVER_SLEEP_TIME_MICROSECONDS = 4 × SIMULATION_SLEEP_TIME_MICROSECONDS` (see below).
 
-```bash
-echo "SLEEP_TIME=0.015" >> .env
-echo "NUMBER_EPISODE=15000" >> .env
-echo "EPISODE_TIME=15" >> .env
-echo "SAVE_NUMBER=100" >> .env
-```
-
-**Variable Explanations:**
-
-* `SLEEP_TIME`: Pause duration (in seconds) between steps executed by the Python environment. This controls how fast the Python script interacts with the simulation. A value of `0.25` approximates real-time interaction speed. A smaller value like `0.015` results in much faster execution (~40 steps per second, assuming the server can keep up).
-* `NUMBER_EPISODE`: The total number of episodes to run during a training session.
-* `EPISODE_TIME`: Maximum duration of a single training episode in *simulated game minutes*. The actual wall-clock time this takes depends on the simulation speed set in the Rust server and the `SLEEP_TIME` in this Python environment.
-* `SAVE_NUMBER`: Frequency for saving the trained model (e.g., a value of `100` saves the model every 100 episodes).
+Keep the same `decision_interval` to train and to replay a model. Note: `MAGB_V0` was trained at about 0.13 s per decision.
 
 ### 2. Set Up the Rust Server (Outer Wilds Web Simulation)
 
 HAL-9000 interacts with the Rust-based server that runs the Outer Wilds Web simulation.
 
-**Clone and prepare the server repository:**
+**Clone the server repository into the HAL-9000 directory** (it is ignored by git):
 
 ```bash
-git clone https://github.com/outer-wilds-web/rust-server.git
-cd rust-server
-git checkout deep_learning # Switch to the required branch
+git clone -b deep_learning https://github.com/outer-wilds-web/rust-server.git
 ```
 
-**Configure server environment variables:**
+Then remove the line `rdkafka = ...` from `rust-server/Cargo.toml`: this dependency is not used by the code and requires `cmake` to build.
 
-Create a file named `.env` inside the `rust-server` directory:
-
-```bash
-echo "SIMULATION_SLEEP_TIME_MICROSECONDS=1600" >> .env
-echo "SERVER_SLEEP_TIME_MICROSECONDS=6400" >> .env
-```
-
-**Variable Explanations:**
-
-* `SIMULATION_SLEEP_TIME_MICROSECONDS`: Controls the core simulation speed. Lower values mean a faster simulation. For real-time speed, use `16000`.
-* `SERVER_SLEEP_TIME_MICROSECONDS`: Controls how frequently the server sends data updates (e.g., to the frontend or AI). Lower values mean more frequent updates. For real-time updates, use `64000`.
-
-**Build and run the server:**
+**Run the server:**
 *(Keep this terminal running)*
 
 ```bash
-cargo build
-cargo run
+uv run python -m hal9000.server
 ```
+
+This builds the server in release mode and launches it with the speed and address set in `config.toml`. The server only listens on the host of `websocket_url` (`127.0.0.1` by default).
 
 ### 3. Set Up the Frontend (Web Interface)
 
@@ -121,30 +112,46 @@ You should now be able to access the web interface, typically at `http://localho
 
 ### 4. Running HAL-9000
 
-With the Rust server (and optionally the frontend) running, you can now run the HAL-9000 scripts from the initial Python environment terminal (where `.venv` is activated).
+With the Rust server (and optionally the frontend) running, you can now run the HAL-9000 scripts from the root directory of the HAL-9000 project.
 
 **Start Training:**
 
-Replace `{name}` with the specific version/name of the model you want to train (e.g., `V0`).
+Training runs on an accelerated simulation, with several ships trained in parallel on the same server (`[training]` section of `config.toml`: `speedup = 25` and `n_envs = 6` by default, about 500 steps per second). Start the server at the training speed:
 
 ```bash
-python -m hal9000.model.Hal9000_2D_{name}
+uv run python -m hal9000.server --train
+```
+
+Then, in another terminal, replace `{name}` with the specific version/name of the model you want to train (e.g., `V0`):
+
+```bash
+uv run python -m hal9000.model.Hal9000_2D_{name}
+```
+
+Training resumes from the latest saved model of the same name in `models/` if there is one. Before starting, the script measures the actual speed of the server and stops if it does not match the training configuration. During training, a warning is printed if Python cannot keep up with the simulation: lower `speedup` or `n_envs` in that case. The policy runs on CPU, which is faster than GPU for this small network.
+
+**Evaluate a Trained Model:**
+
+With the server running at real-time speed (`uv run python -m hal9000.server`), runs 10 episodes with one of the pre-trained models from `models/` and prints the total reward of each episode.
+
+```bash
+uv run python -m hal9000.test.test_MAGB_V1   # or test_MAGB_VO, test_PAT_V1
 ```
 
 **Run Visualization/Inference:**
 
-This script provides a lightweight visualization of the simulation and agent behavior. It's an alternative to using the full web frontend. Ensure the Rust server is running.
+This script provides a lightweight visualization of the simulation and agent behavior. It's an alternative to using the full web frontend. Ensure the Rust server is running. It shows every ship connected to the server, so it can also be used to watch the ships during training.
 
-```Bash
-python -m hal9000.display.display_ship2D
+```bash
+uv run python -m hal9000.display.display_ship2D
 ```
 
 **Monitor Training Progress:**
 
-Use TensorBoard to view logs and metrics generated during training. Run this command from the root directory of the HAL-9000 project.
+Use TensorBoard to view logs and metrics generated during training (`rollout/ep_rew_mean` is the mean reward per episode). Run this command from the root directory of the HAL-9000 project.
 
 ```bash
-tensorboard --logdir logs
+uv run tensorboard --logdir logs
 ```
 Then navigate to the URL provided by TensorBoard (usually `http://localhost:6006`).
 
@@ -161,3 +168,8 @@ To experiment with different AI behaviors or reward structures:
     Open the newly created file (`hal9000/model/Hal9000_2D_{name}.py`) and adjust the reward function logic according to your requirements.
 3.  **Train your new agent:**
     Use the command from the "Start Training" section, replacing `{name}` with the identifier you chose.
+
+## Security Notes
+
+* **Only load models you trust.** Stable-Baselines3 `.zip` files contain objects serialized with pickle, and loading a model can execute arbitrary code. The scripts load models through `hal9000.model.core.loading.load_ppo`, which avoids unpickling the saved learning-rate and clip-range functions (this also fixes crashes when loading the models with a different Python version than the one they were trained with), but other pickled objects remain.
+* The WebSocket connection to the Rust server is unencrypted and unauthenticated (`ws://`). It is meant for local use only: do not expose the server port to an untrusted network.
