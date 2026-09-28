@@ -24,3 +24,8 @@ package = false
 # Python géré par uv plutôt que celui du système : il inclut tkinter, nécessaire à
 # l'affichage matplotlib (display_ship2D), sans rien installer côté système
 python-preference = "only-managed"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
