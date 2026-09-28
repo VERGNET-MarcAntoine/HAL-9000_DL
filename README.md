@@ -2,7 +2,7 @@
 
 HAL-9000 is an AI autopilot trained with reinforcement learning (PPO) for the [Outer Wilds Web](https://github.com/outer-wilds-web) project: it flies a ship from planet to planet in the game's solar system, driven by the project's Rust server. The project is developed by Quentin Rollet, Marc-Antoine Vergnet, and Patrice Soulier, who also lead the development of Outer Wilds Web.
 
-The repository is self-contained: training, evaluation and visualization run on a Python replica of the Rust server physics. The Rust server remains the final target, and every command can use it with `--server`.
+The repository is self-contained: training, evaluation and visualization run on a Python replica of the Rust server physics. The Rust server remains the final target, and every command can use it with `--server`. The presentation of the original 2025 student project (in French) is in [`docs/presentation.pdf`](docs/presentation.pdf).
 
 <p align="center">
   <img src="docs/demo.gif" alt="Four ships flown by the trained model, each with its trail and a dotted line to its current target planet" width="600">
@@ -203,7 +203,7 @@ What made the difference, measured along the way:
 * **A larger network** (256×256) learned faster but was less stable; the lower learning rate at the end stabilized the policy.
 * **What did not help**: a higher death penalty or `gamma = 0.998` made learning slower or too cautious.
 
-## Tests
+## Tests and Code Quality
 
 ```bash
 uv run pytest
@@ -215,6 +215,13 @@ About 20 tests, a few seconds, without the Rust server:
 * **Task**: reward for reaching a planet, deaths, circling the target earns nothing, orbital observations, engine directions.
 * **Configuration**: overrides, synchronization of the Python and server speeds.
 * **Final model**: it still reaches at least 6 planets per episode and survives most episodes on the simulation.
+
+Code quality, configured in `pyproject.toml`:
+
+```bash
+uv run ruff check .   # style, imports, common bugs
+uv run pyright        # type checking (the engine of Pylance), standard mode
+```
 
 ## Project Structure
 
@@ -236,6 +243,7 @@ hal9000/
   train.py, evaluate.py          command-line entry points
 tests/                           tests (uv run pytest)
 docs/demo.gif                    animation of the README (display_ship2D --save)
+docs/presentation.pdf            presentation of the original 2025 student project (in French)
 logs/                            TensorBoard curves (ignored by git)
 rust-server/                     Rust server, cloned separately (ignored by git)
 ```
