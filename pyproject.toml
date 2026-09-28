@@ -1,0 +1,26 @@
+[project]
+name = "hal9000"
+version = "1.0.0"
+description = "Autopilotes entraînés par apprentissage par renforcement pour Outer Wilds Web"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "gymnasium>=1.0,<2",
+    "matplotlib>=3.10",
+    "numpy>=2.2",
+    "stable-baselines3>=2.5,<3",
+    "tensorboard>=2.19",
+    "torch>=2.13",
+    "websocket-client>=1.8",
+    # Versions minimales des dépendances transitives (correctifs de sécurité)
+    "pillow>=12.3",
+    "protobuf>=6.31.1",
+    "werkzeug>=3.1.6",
+]
+
+[tool.uv]
+# Projet de scripts (lancés avec `uv run python -m ...`), pas une librairie à distribuer
+package = false
+# Python géré par uv plutôt que celui du système : il inclut tkinter, nécessaire à
+# l'affichage matplotlib (display_ship2D), sans rien installer côté système
+python-preference = "only-managed"
