@@ -4,6 +4,10 @@ HAL-9000 is an AI autopilot trained with reinforcement learning (PPO) for the [O
 
 The repository is self-contained: training, evaluation and visualization run on a Python replica of the Rust server physics. The Rust server remains the final target, and every command can use it with `--server`.
 
+<p align="center">
+  <img src="docs/demo.gif" alt="Four ships flown by the trained model, each with its trail and a dotted line to its current target planet" width="600">
+</p>
+
 ## Results
 
 `models/Hal9000_2D_final.zip` is the trained model, used by default by every command. Episodes last 10 simulated minutes, with deterministic actions:
@@ -106,7 +110,11 @@ Flies the latest model (or `--model`) with deterministic actions on 100 episodes
 uv run python -m hal9000.display.display_ship2D
 ```
 
-Flies the latest model (or `--model`) in the Python simulation, with four ships (`--ships`) in the same solar system, their trails, a dotted line to their current target and the number of planets reached. `--speed` changes the speed (`[simulation] speedup` by default). The other modes are `--training` (see [Training](#training)) and `--server` (see below).
+Flies the latest model (or `--model`) in the Python simulation, with four ships (`--ships`) in the same solar system, their trails, a dotted line to their current target and the number of planets reached. `--speed` changes the speed (`[simulation] speedup` by default) and `--theme light` uses a white background instead of the dark one. `--save demo.gif` records the animation in a GIF instead of showing it (`--frames` images); the animation of this README was made with:
+
+```bash
+uv run python -m hal9000.display.display_ship2D --save docs/demo.gif --frames 360 --speed 10 --seed 4 --theme light
+``` The other modes are `--training` (see [Training](#training)) and `--server` (see below).
 
 ## Using the Rust Server
 
@@ -195,6 +203,19 @@ What made the difference, measured along the way:
 * **A larger network** (256×256) learned faster but was less stable; the lower learning rate at the end stabilized the policy.
 * **What did not help**: a higher death penalty or `gamma = 0.998` made learning slower or too cautious.
 
+## Tests
+
+```bash
+uv run pytest
+```
+
+About 20 tests, a few seconds, without the Rust server:
+
+* **Physics**: the Python simulation reproduces trajectories recorded on the Rust server (`tests/data/server_trajectories.json`), to 1e-6 units after ~10 simulated seconds, for each engine. To record them again after a change of the server physics, start the server and run `uv run python -m tests.record_server_trajectories`.
+* **Task**: reward for reaching a planet, deaths, circling the target earns nothing, orbital observations, engine directions.
+* **Configuration**: overrides, synchronization of the Python and server speeds.
+* **Final model**: it still reaches at least 6 planets per episode and survives most episodes on the simulation.
+
 ## Project Structure
 
 ```
@@ -213,6 +234,8 @@ hal9000/
   config.py                      configuration loading
   server.py                      Rust server launcher, synchronized with config.toml
   train.py, evaluate.py          command-line entry points
+tests/                           tests (uv run pytest)
+docs/demo.gif                    animation of the README (display_ship2D --save)
 logs/                            TensorBoard curves (ignored by git)
 rust-server/                     Rust server, cloned separately (ignored by git)
 ```
