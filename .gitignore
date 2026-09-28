@@ -4,7 +4,9 @@ rust-server/
 .env
 
 logs/
-models/
+models/*
+# Le modèle final est versionné pour pouvoir être utilisé dès le clonage
+!models/Hal9000_2D_final.zip
 # Cache files
 __pycache__/
 *.pyc
