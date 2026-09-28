@@ -10,3 +10,5 @@ models/*
 # Cache files
 __pycache__/
 *.pyc
+# Outils locaux
+.serena/
