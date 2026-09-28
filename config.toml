@@ -6,14 +6,14 @@
 
 [simulation]
 # Accélération de la simulation par rapport au temps réel pour regarder un modèle voler
-# (serveur lancé avec `uv run python -m hal9000.server`). 1 = temps réel.
-speedup = 1
+# (serveur lancé avec `uv run python -m hal9000.server`, evaluate --watch, display_ship2D).
+# 1 = temps réel, 5 = une orbite de Mercure en ~10 s au lieu de ~50 s.
+speedup = 5
 
-# Temps simulé entre deux décisions de l'IA, en secondes.
-# Doit être le même à l'entraînement et au replay d'un modèle.
-# 0.25 est la valeur prévue ; MAGB_V0 a en pratique été entraîné à ~0.13
-# (SLEEP_TIME et vitesse du serveur n'étaient pas synchronisés).
-decision_interval = 0.25
+# Temps simulé entre deux décisions de l'IA, en secondes. Doit être le même à l'entraînement
+# et au replay d'un modèle. Le serveur coupe les moteurs après 15 ticks (0.25 s) sans commande :
+# 0.2 s (12 ticks) laisse une marge si une commande arrive en retard.
+decision_interval = 0.2
 
 [server]
 websocket_url = "ws://127.0.0.1:3012"
@@ -21,8 +21,8 @@ websocket_url = "ws://127.0.0.1:3012"
 path = "rust-server"
 
 [training]
-# Accélération pendant l'entraînement (serveur lancé avec `uv run python -m hal9000.server --train`)
-# et nombre de vaisseaux entraînés en parallèle sur le même serveur.
+# Entraînement sur le serveur Rust (serveur lancé avec `uv run python -m hal9000.server --train`) :
+# accélération et nombre de vaisseaux entraînés en parallèle sur le même serveur.
 # Plus c'est rapide, plus il y a de steps en retard (qui durent plus que decision_interval) :
 #   x25, 4 vaisseaux : 335 steps/s,  3 % de steps en retard
 #   x25, 6 vaisseaux : 514 steps/s,  7 %
@@ -30,9 +30,31 @@ path = "rust-server"
 # L'entraînement affiche un avertissement si Python ne suit plus.
 speedup = 25
 n_envs = 6
+# Entraînement sur la simulation numpy (réplique exacte de la physique du serveur, sans serveur) :
+# nombre de vaisseaux simulés en parallèle
+sim_envs = 64
 # Durée maximale d'un épisode, en minutes simulées
-episode_time = 15
-# Nombre total d'épisodes d'entraînement
-number_episode = 15000
-# Sauvegarde du modèle tous les N épisodes
-save_number = 100
+episode_time = 10
+# Nombre total de steps d'entraînement, et fréquence de sauvegarde du modèle
+total_timesteps = 20_000_000
+save_every = 1_000_000
+
+[reward]
+# Récompense de la tâche Hal9000_2D (hal9000/model/Hal9000_2D.py)
+target_reward = 10.0
+death_penalty = 10.0
+# Distance parcourue vers la cible qui rapporte +1
+shaping_scale = 1000.0
+
+[ppo]
+learning_rate = 3e-4
+# Nombre de steps collectés (tous vaisseaux confondus) avant chaque mise à jour
+rollout_size = 16384
+batch_size = 2048
+n_epochs = 10
+# Horizon d'environ 1 / (1 - gamma) = 200 décisions, soit 40 s simulées
+gamma = 0.995
+gae_lambda = 0.95
+clip_range = 0.2
+ent_coef = 0.005
+net_arch = [128, 128]

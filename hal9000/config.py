@@ -23,9 +23,12 @@ class Config:
         decision_interval (float): Le temps simulé entre deux décisions de l'IA, en secondes.
         websocket_url (str): L'URL du serveur WebSocket.
         server_path (Path): Le dossier du serveur Rust.
+        sim_envs (int): Le nombre de vaisseaux simulés en parallèle sur la simulation numpy.
         episode_time (int): La durée maximale d'un épisode, en minutes simulées.
-        number_episode (int): Le nombre total d'épisodes d'entraînement.
-        save_number (int): La fréquence de sauvegarde du modèle, en épisodes.
+        total_timesteps (int): Le nombre total de steps d'entraînement.
+        save_every (int): La fréquence de sauvegarde du modèle, en steps.
+        reward (dict): Les paramètres de la récompense (section [reward]).
+        ppo (dict): Les hyperparamètres PPO (section [ppo]).
     """
     speedup: float
     training_speedup: float
@@ -33,9 +36,12 @@ class Config:
     decision_interval: float
     websocket_url: str
     server_path: Path
+    sim_envs: int
     episode_time: int
-    number_episode: int
-    save_number: int
+    total_timesteps: int
+    save_every: int
+    reward: dict
+    ppo: dict
 
     def for_training(self) -> "Config":
         """Retourne la configuration avec l'accélération d'entraînement."""
@@ -62,18 +68,25 @@ class Config:
         return TICKS_PER_SERVER_UPDATE * self.simulation_sleep_us
 
 
-def load_config(path: Path = CONFIG_PATH) -> Config:
+def load_config(path: Path = CONFIG_PATH, overrides: list[str] | None = None) -> Config:
     """
     Charge la configuration depuis un fichier TOML.
 
     Args:
         path (Path): Le chemin du fichier de configuration.
+        overrides (list[str], optional): Des surcharges "section.clé=valeur" (valeur en syntaxe TOML).
 
     Returns:
         Config: La configuration.
     """
     with open(path, "rb") as f:
         data = tomllib.load(f)
+    for override in overrides or []:
+        key, _, value = override.partition("=")
+        section, _, name = key.partition(".")
+        if section not in data or name not in data[section]:
+            raise ValueError(f"Surcharge inconnue : {key}")
+        data[section][name] = tomllib.loads(f"v = {value}")["v"]
 
     config = Config(
         speedup=float(data["simulation"]["speedup"]),
@@ -82,9 +95,12 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         decision_interval=float(data["simulation"]["decision_interval"]),
         websocket_url=data["server"]["websocket_url"],
         server_path=PROJECT_ROOT / data["server"]["path"],
+        sim_envs=int(data["training"]["sim_envs"]),
         episode_time=int(data["training"]["episode_time"]),
-        number_episode=int(data["training"]["number_episode"]),
-        save_number=int(data["training"]["save_number"]),
+        total_timesteps=int(data["training"]["total_timesteps"]),
+        save_every=int(data["training"]["save_every"]),
+        reward=dict(data["reward"]),
+        ppo=dict(data["ppo"]),
     )
     if min(config.speedup, config.training_speedup, config.decision_interval, config.n_envs) <= 0:
         raise ValueError(f"{path}: speedup, decision_interval et n_envs doivent être positifs")
